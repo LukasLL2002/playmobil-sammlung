@@ -63,7 +63,7 @@ async function initAuth() {
   state.user = data.session?.user || null;
   sb.auth.onAuthStateChange((_e, session) => {
     const was = !!state.user; state.user = session?.user || null;
-    if (was !== !!state.user) { state.loaded = false; setTimeout(route, 0); }
+    if (was !== !!state.user) { state.loaded = false; vstate.loaded = false; setTimeout(route, 0); }
   });
 }
 document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); };
@@ -71,6 +71,7 @@ document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signO
 function renderLogin() {
   document.getElementById('topbar').classList.add('hidden');
   document.getElementById('tabbar').classList.add('hidden');
+  document.getElementById('modebar').classList.add('hidden');
   app.innerHTML = `
   <div class="login card">
     <div class="logo">🧸</div>
@@ -110,18 +111,34 @@ function renderLogin() {
 }
 
 // ---------- Router ----------
+const TABS = {
+  pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['sets', '🏰', 'Sets'], ['uebersicht', '📊', 'Übersicht']],
+  v: [['v/liste', '🔍', 'Vorrat'], ['v/orte', '🗄️', 'Orte'], ['v/einkauf', '🛒', 'Einkauf'], ['v/uebersicht', '📊', 'Übersicht']],
+};
+function setMode(mode, tab) {
+  document.body.classList.toggle('mode-v', mode === 'v');
+  localStorage.setItem('modus', mode);
+  document.getElementById('brand').textContent = mode === 'v' ? '🥫 Vorratskammer' : '🧸 Playmobil-Sammlung';
+  document.getElementById('brand').href = mode === 'v' ? '#v/liste' : '#teile';
+  document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
+  const nav = document.getElementById('tabbar');
+  nav.innerHTML = TABS[mode].map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}</span>${l}</a>`).join('');
+}
 async function route() {
   if (!state.user) return renderLogin();
-  document.getElementById('topbar').classList.remove('hidden');
-  document.getElementById('tabbar').classList.remove('hidden');
+  ['topbar', 'tabbar', 'modebar'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+  if (!location.hash || location.hash === '#') { location.replace('#' + (localStorage.getItem('modus') === 'v' ? 'v/liste' : 'teile')); return; }
+  const parts = location.hash.slice(1).split('/');
+  window.scrollTo(0, 0);
+  if (parts[0] === 'v') return routeVorrat(parts[1] || 'liste', parts[2]);
   if (!state.loaded) {
+    setMode('pm', '');
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Sammlung …</div>';
     try { await loadAll(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
-  const [view, id] = (location.hash.slice(1) || 'teile').split('/');
+  const [view, id] = parts;
   const tab = { teil: 'teile', kiste: 'kisten', set: 'sets', etiketten: 'kisten' }[view] || view;
-  document.querySelectorAll('#tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
-  window.scrollTo(0, 0);
+  setMode('pm', tab);
   const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort };
   (views[view] || viewTeile)(id);
 }
@@ -414,17 +431,18 @@ function viewKiste(id) {
   document.getElementById('cp').onclick = async () => { try { await navigator.clipboard.writeText(kisteUrl(k.id)); toast('Link kopiert ✔'); } catch { prompt('Link kopieren:', kisteUrl(k.id)); } };
   const dk = document.getElementById('dk');
   if (dk) dk.onclick = async () => { if (!confirm('Leere Kiste löschen?')) return; const { error } = await sb.from('kisten').delete().eq('id', k.id); if (error) return fail(error); state.kisten = state.kisten.filter(x => x.id !== k.id); location.hash = '#kisten'; };
-  if (nfc) document.getElementById('nfc').onclick = async () => {
-    try {
-      const ndef = new NDEFReader();
-      toast('Jetzt das Handy an den NFC-Aufkleber halten …', 15000);
-      await ndef.write({ records: [{ recordType: 'url', data: kisteUrl(k.id) }] });
-      toast('NFC-Tag beschrieben ✔ – Antippen öffnet jetzt diese Kiste.', 5000);
-    } catch (e) { fail(e); }
-  };
+  if (nfc) document.getElementById('nfc').onclick = () => writeNfc(kisteUrl(k.id), 'diese Kiste');
 }
 
-// ---------- QR-Etiketten ----------
+// ---------- NFC & QR ----------
+async function writeNfc(url, what) {
+  try {
+    const ndef = new NDEFReader();
+    toast('Jetzt das Handy an den NFC-Aufkleber halten …', 15000);
+    await ndef.write({ records: [{ recordType: 'url', data: url }] });
+    toast('NFC-Tag beschrieben ✔ – Antippen öffnet jetzt ' + what + '.', 5000);
+  } catch (e) { fail(e); }
+}
 function qrSvg(text) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
 function viewLabels(id) {
   const list = id ? state.kisten.filter(k => k.id === Number(id)) : state.kisten;
@@ -518,6 +536,359 @@ function exportCsv() {
 function viewPasswort() {
   app.innerHTML = `<div class="card login"><h1>Neues Passwort</h1><form id="pf"><label>Neues Passwort</label><input id="np" type="password" minlength="6" required autocomplete="new-password"><div style="height:1rem"></div><button class="btn block">Speichern</button></form></div>`;
   document.getElementById('pf').onsubmit = async e => { e.preventDefault(); const { error } = await sb.auth.updateUser({ password: document.getElementById('np').value }); if (error) return fail(error); toast('Passwort geändert ✔'); location.hash = '#teile'; };
+}
+
+// =====================================================================
+// ---------- Bereich: Vorratskammer ----------
+// =====================================================================
+const vstate = { loaded: false, orte: [], items: [], filter: { q: '', kat: '', ort: '', nur: '' } };
+const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Haushalt', 'Sonstiges'];
+const EINHEITEN = ['Stück', 'Packung', 'Dose', 'Glas', 'Flasche', 'kg', 'g', 'l', 'ml'];
+const ortById = id => vstate.orte.find(o => o.id === Number(id));
+const ortUrl = id => baseUrl() + '#v/ort/' + id;
+const dec = n => (Number(n) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+const parseDec = v => { v = String(v ?? '').trim().replace(/\s|€/g, '').replace(',', '.'); if (v === '') return null; const n = Number(v); if (isNaN(n)) throw new Error('„' + v + '“ ist keine Zahl.'); return n; };
+function mhdDays(it) { if (!it.mhd) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(it.mhd + 'T00:00:00') - t) / 864e5); }
+const mhdState = it => { const d = mhdDays(it); return d == null ? '' : d < 0 ? 'bad' : d <= 14 ? 'warn' : ''; };
+const isLow = it => it.mindestbestand != null && Number(it.menge) < Number(it.mindestbestand);
+const mhdText = it => { const d = mhdDays(it); if (d == null) return ''; const ds = new Date(it.mhd + 'T00:00:00').toLocaleDateString('de-DE');
+  return d < 0 ? `<span class="badge red">abgelaufen ${ds}</span>` : d <= 14 ? `<span class="badge orange">MHD ${ds} (${d === 0 ? 'heute' : 'in ' + d + ' T.'})</span>` : `<span class="badge">MHD ${ds}</span>`; };
+const vsort = (a, b) => a.name.localeCompare(b.name, 'de');
+
+async function loadVorrat() {
+  const [o, v] = await Promise.all([sb.from('vorrat_orte').select('*'), sb.from('vorrat').select('*')]);
+  for (const r of [o, v]) if (r.error) throw r.error;
+  vstate.orte = o.data.sort((a, b) => sortNat(a.name, b.name));
+  vstate.items = v.data.sort(vsort);
+  vstate.loaded = true;
+  await loadImageUrls(vstate.items);
+}
+
+async function routeVorrat(view, id) {
+  const tab = { artikel: 'v/liste', ort: 'v/orte', etiketten: 'v/orte' }[view] || 'v/' + view;
+  setMode('v', tab);
+  if (!vstate.loaded) {
+    app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Vorrat …</div>';
+    try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
+  }
+  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels };
+  (views[view] || vListe)(id);
+}
+
+function vMatches(it, f) {
+  if (f.kat && it.kategorie !== f.kat) return false;
+  if (f.ort && String(it.ort_id) !== f.ort && !(f.ort === 'none' && !it.ort_id)) return false;
+  if (f.nur === 'mhd' && !mhdState(it)) return false;
+  if (f.nur === 'low' && !isLow(it)) return false;
+  if (!f.q) return true;
+  const o = ortById(it.ort_id);
+  const hay = norm([it.name, it.kategorie, it.einheit, it.barcode, it.notiz, o?.name].join(' '));
+  return norm(f.q).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
+function vItem(it) {
+  const o = ortById(it.ort_id);
+  const cls = mhdState(it) || (isLow(it) ? 'warn' : '');
+  return `<div class="vitem ${cls}" data-id="${it.id}">
+    <a class="info" href="#v/artikel/${it.id}" style="display:flex;gap:.6rem;align-items:center">${imgUrl(it) ? thumb(it) : '<div class="thumb">🥫</div>'}
+      <div style="min-width:0;flex:1"><div class="title">${esc(it.name)}</div>
+      <div class="sub">${esc(it.kategorie || '')}${o ? ' · 📍 ' + esc(o.name) : ''}</div>
+      <div>${mhdText(it)}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div></div></a>
+    <div class="qty"><button type="button" data-d="-1" aria-label="weniger">−</button>
+      <div class="n">${dec(it.menge)}<small>${esc(it.einheit || '')}</small></div>
+      <button type="button" data-d="1" aria-label="mehr">+</button></div></div>`;
+}
+
+// +1 / −1 direkt in der Liste
+function bindQty(container, rerender) {
+  container.onclick = async e => {
+    const b = e.target.closest('button[data-d]'); if (!b) return;
+    const id = Number(b.closest('.vitem').dataset.id);
+    const it = vstate.items.find(x => x.id === id);
+    const neu = Math.max(0, Number(it.menge) + Number(b.dataset.d));
+    if (neu === Number(it.menge)) return;
+    const alt = it.menge; it.menge = neu; rerender();
+    const { error } = await sb.from('vorrat').update({ menge: neu }).eq('id', id);
+    if (error) { it.menge = alt; rerender(); fail(error); }
+  };
+}
+
+function vListe() {
+  const f = vstate.filter;
+  const kats = [...new Set([...KATEGORIEN, ...vstate.items.map(i => i.kategorie).filter(Boolean)])];
+  const scan = 'BarcodeDetector' in window;
+  app.innerHTML = `
+    <div class="row" style="margin-bottom:.6rem;flex-wrap:nowrap"><div class="search grow" style="flex:1;margin:0"><input id="q" type="search" placeholder="Vorrat durchsuchen …" value="${esc(f.q)}" autocomplete="off"></div>
+      ${scan ? '<button class="btn secondary" id="scan" title="Barcode scannen">▥</button>' : ''}</div>
+    <div class="filters">
+      <select id="fKat"><option value="">Alle Kategorien</option>${kats.map(k => `<option ${k === f.kat ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
+      <select id="fOrt"><option value="">Alle Orte</option><option value="none" ${f.ort === 'none' ? 'selected' : ''}>Ohne Ort</option>${vstate.orte.map(o => `<option value="${o.id}" ${String(o.id) === f.ort ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>
+      <select id="fNur"><option value="">Alles</option><option value="mhd" ${f.nur === 'mhd' ? 'selected' : ''}>MHD bald/abgelaufen</option><option value="low" ${f.nur === 'low' ? 'selected' : ''}>Unter Mindestbestand</option></select>
+    </div>
+    <div id="count" class="muted" style="margin-bottom:.5rem"></div>
+    <div id="list" class="list"></div>
+    <a class="fab" href="#v/artikel/neu" title="Neuer Artikel" style="background:#2e7d32">＋</a>`;
+  const list = document.getElementById('list');
+  const render = () => {
+    const res = vstate.items.filter(i => vMatches(i, f));
+    document.getElementById('count').textContent = `${num(res.length)} von ${num(vstate.items.length)} Artikeln`;
+    list.innerHTML = res.map(vItem).join('') || (vstate.items.length ? '<div class="card center muted">Nichts gefunden.</div>'
+      : '<div class="card center"><p>Noch nichts im Vorrat erfasst.</p><a class="btn" href="#v/artikel/neu">＋ Ersten Artikel anlegen</a></div>');
+  };
+  bindQty(list, render);
+  document.getElementById('q').oninput = e => { f.q = e.target.value; render(); };
+  document.getElementById('fKat').onchange = e => { f.kat = e.target.value; render(); };
+  document.getElementById('fOrt').onchange = e => { f.ort = e.target.value; render(); };
+  document.getElementById('fNur').onchange = e => { f.nur = e.target.value; render(); };
+  if (scan) document.getElementById('scan').onclick = async () => {
+    const code = await scanBarcode(); if (!code) return;
+    const hit = vstate.items.find(i => i.barcode === code);
+    if (hit) location.hash = '#v/artikel/' + hit.id;
+    else if (confirm(`Barcode ${code} ist noch nicht erfasst. Neuen Artikel anlegen?`)) location.hash = '#v/artikel/neu?barcode=' + encodeURIComponent(code);
+  };
+  render();
+}
+
+// Barcode per Kamera (BarcodeDetector, nur wo unterstützt)
+function scanBarcode() {
+  return new Promise(async resolve => {
+    let stream, timer, done = false;
+    const d = document.createElement('dialog');
+    d.innerHTML = `<div class="scanbox"><h2 style="margin-top:0">Barcode scannen</h2><video playsinline muted></video><p class="muted">Barcode vor die Kamera halten …</p><button class="btn secondary block" type="button">Abbrechen</button></div>`;
+    document.body.appendChild(d); d.showModal();
+    const finish = code => { if (done) return; done = true; clearInterval(timer); stream && stream.getTracks().forEach(t => t.stop()); d.close(); d.remove(); resolve(code || null); };
+    d.querySelector('button').onclick = () => finish(null);
+    d.addEventListener('cancel', () => finish(null));
+    try {
+      const det = new BarcodeDetector();
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const v = d.querySelector('video'); v.srcObject = stream; await v.play();
+      timer = setInterval(async () => { try { const r = await det.detect(v); if (r[0]) finish(r[0].rawValue); } catch { } }, 300);
+    } catch (e) { fail(e); finish(null); }
+  });
+}
+
+function vForm(id) {
+  const pre = new URLSearchParams(location.hash.split('?')[1] || '');
+  const isNew = !id || id.startsWith('neu');
+  let it = isNew ? null : vstate.items.find(x => x.id === Number(id));
+  if (!isNew && !it) { app.innerHTML = '<div class="card">Artikel nicht gefunden. <a href="#v/liste">Zur Liste</a></div>'; return; }
+  it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', notiz: '' };
+  let file = null;
+  const u = imgUrl(it);
+  const scan = 'BarcodeDetector' in window;
+  const kats = [...new Set([...KATEGORIEN, ...vstate.items.map(i => i.kategorie).filter(Boolean)])];
+  const decIn = v => v == null ? '' : String(v).replace('.', ',');
+  app.innerHTML = `
+    <a class="back" href="#v/liste">‹ Zurück</a>
+    <h1>${isNew ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
+    <form id="f" class="card">
+      <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt">
+      <div class="grid2">
+        <div><label for="kat">Kategorie</label><input id="kat" list="katliste" value="${esc(it.kategorie)}" placeholder="z.B. Konserven"></div>
+        <div><label for="ein">Einheit</label><input id="ein" list="einliste" value="${esc(it.einheit)}"></div>
+      </div>
+      <datalist id="katliste">${kats.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+      <datalist id="einliste">${EINHEITEN.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+      <div class="grid2">
+        <div><label for="menge">Menge</label><input id="menge" inputmode="decimal" value="${decIn(it.menge)}"></div>
+        <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
+      </div>
+      <div class="grid2">
+        <div><label for="mhd">MHD (haltbar bis)</label><input id="mhd" type="date" value="${esc(it.mhd || '')}"></div>
+        <div><label for="preis">Preis (€ pro Einheit)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"></div>
+      </div>
+      <label for="ort">Ort</label>
+      <div class="row"><select id="ort" style="flex:1"></select><button type="button" class="btn small secondary" id="newOrt">＋ Neu</button></div>
+      <label for="bc">Barcode (optional)</label>
+      <div class="row"><input id="bc" style="flex:1" inputmode="numeric" value="${esc(it.barcode)}">${scan ? '<button type="button" class="btn small secondary" id="scanBc">▥ Scannen</button>' : ''}</div>
+      <label>Foto (optional)</label>
+      <img id="prev" class="photo-preview ${u ? '' : 'hidden'}" src="${esc(u || '')}" alt="">
+      <div class="row">
+        <label class="btn secondary grow" style="margin:0">📷 Foto<input id="cam" type="file" accept="image/*" capture="environment" hidden></label>
+        <label class="btn secondary grow" style="margin:0">🖼️ Galerie<input id="gal" type="file" accept="image/*" hidden></label>
+      </div>
+      <label for="notiz">Notiz</label><textarea id="notiz">${esc(it.notiz)}</textarea>
+      <div style="height:1rem"></div>
+      <button class="btn block" type="submit" style="background:#2e7d32">💾 Speichern</button>
+      ${isNew ? '<div style="height:.5rem"></div><button class="btn secondary block" type="button" id="saveMore">💾 Speichern & nächster Artikel</button>'
+        : '<div style="height:.5rem"></div><button class="btn danger block" type="button" id="del">🗑️ Löschen</button>'}
+    </form>`;
+  const oSel = document.getElementById('ort');
+  const fillOrte = sel => { oSel.innerHTML = '<option value="">– kein Ort –</option>' + vstate.orte.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join(''); oSel.value = sel ?? ''; };
+  fillOrte(it.ort_id);
+  document.getElementById('newOrt').onclick = async () => { const o = await ortDialog(); if (o) fillOrte(o.id); };
+  if (scan) document.getElementById('scanBc').onclick = async () => { const c = await scanBarcode(); if (c) document.getElementById('bc').value = c; };
+  const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
+  document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const del = document.getElementById('del');
+  if (del) del.onclick = async () => {
+    if (!confirm('Diesen Artikel löschen?')) return;
+    const { error } = await sb.from('vorrat').delete().eq('id', it.id); if (error) return fail(error);
+    if (it.bild_url) await sb.storage.from(BUCKET).remove([it.bild_url]);
+    vstate.items = vstate.items.filter(x => x.id !== it.id); toast('Gelöscht.'); location.hash = '#v/liste';
+  };
+  async function save(more) {
+    const btns = app.querySelectorAll('form button'); btns.forEach(b => b.disabled = true);
+    try {
+      const row = {
+        name: document.getElementById('name').value.trim(),
+        kategorie: document.getElementById('kat').value.trim() || null,
+        einheit: document.getElementById('ein').value.trim() || null,
+        menge: Math.max(0, parseDec(document.getElementById('menge').value) ?? 0),
+        mindestbestand: parseDec(document.getElementById('min').value),
+        mhd: document.getElementById('mhd').value || null,
+        preis: parseDec(document.getElementById('preis').value),
+        ort_id: oSel.value ? Number(oSel.value) : null,
+        barcode: document.getElementById('bc').value.trim() || null,
+        notiz: document.getElementById('notiz').value.trim() || null,
+      };
+      if (!row.name) throw new Error('Bitte einen Namen eingeben.');
+      const oldPath = it.bild_url;
+      if (file) {
+        toast('Foto wird hochgeladen …', 10000);
+        const blob = await shrinkImage(file);
+        const path = `vorrat/${crypto.randomUUID()}.jpg`;
+        const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
+        if (up.error) throw up.error;
+        row.bild_url = path;
+      }
+      const r = isNew ? await sb.from('vorrat').insert(row).select().single() : await sb.from('vorrat').update(row).eq('id', it.id).select().single();
+      if (r.error) throw r.error;
+      if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
+      await loadImageUrls([r.data]);
+      vstate.items = (isNew ? [...vstate.items, r.data] : vstate.items.map(x => x.id === r.data.id ? r.data : x)).sort(vsort);
+      toast('Gespeichert ✔');
+      if (more) { const q = new URLSearchParams(); if (row.ort_id) q.set('ort', row.ort_id); if (row.kategorie) q.set('kat', row.kategorie); if (row.einheit) q.set('einheit', row.einheit); q.set('t', Date.now()); location.hash = '#v/artikel/neu?' + q; }
+      else location.hash = '#v/liste';
+    } catch (e) { fail(e); btns.forEach(b => b.disabled = false); }
+  }
+  document.getElementById('f').onsubmit = e => { e.preventDefault(); save(false); };
+  const sm = document.getElementById('saveMore'); if (sm) sm.onclick = () => save(true);
+}
+
+// ---------- Orte (Regale/Fächer) ----------
+function ortDialog(o) {
+  const p = dialog(`<form><h2 style="margin-top:0">${o ? 'Ort bearbeiten' : 'Neuer Ort'}</h2>
+    <label>Name</label><input name="name" required value="${esc(o?.name)}" placeholder="z.B. Regal 2 Fach 3">
+    <label>Farbe</label><input name="farbe" value="${esc(o?.farbe)}" placeholder="optional">
+    <label>Notiz</label><textarea name="notiz">${esc(o?.notiz)}</textarea>
+    <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
+  dialog.current._save = async d => {
+    const row = formVals(d.querySelector('form'), ['name', 'farbe', 'notiz']);
+    const r = o ? await sb.from('vorrat_orte').update(row).eq('id', o.id).select().single() : await sb.from('vorrat_orte').insert(row).select().single();
+    if (r.error) throw r.error;
+    vstate.orte = (o ? vstate.orte.map(x => x.id === o.id ? r.data : x) : [...vstate.orte, r.data]).sort((a, b) => sortNat(a.name, b.name));
+    toast('Ort gespeichert ✔'); return r.data;
+  };
+  return p;
+}
+
+function vOrte() {
+  app.innerHTML = `
+    <h1>🗄️ Orte in der Vorratskammer</h1>
+    <div class="row" style="margin-bottom:.8rem"><button class="btn grow" id="no">＋ Neuer Ort</button><a class="btn secondary" href="#v/etiketten">🏷️ QR-Etiketten</a></div>
+    <div class="list">${vstate.orte.map(o => { const n = vstate.items.filter(i => i.ort_id === o.id);
+      return `<a class="item" href="#v/ort/${o.id}"><div class="thumb">🗄️</div><div class="info"><div class="title">${esc(o.name)}</div>
+        <div class="sub">${dot(o.farbe)}${esc(o.farbe || '')}</div></div><div class="right">${num(n.length)} Artikel</div></a>`; }).join('') || '<div class="card center muted">Noch keine Orte angelegt.</div>'}</div>`;
+  document.getElementById('no').onclick = async () => { const o = await ortDialog(); if (o) location.hash = '#v/ort/' + o.id; };
+}
+
+function vOrt(id) {
+  const o = ortById(id);
+  if (!o) { app.innerHTML = '<div class="card">Diesen Ort gibt es (noch) nicht. <a href="#v/orte">Alle Orte</a></div>'; return; }
+  const nfc = 'NDEFReader' in window;
+  app.innerHTML = `
+    <a class="back" href="#v/orte">‹ Alle Orte</a>
+    <div class="card">
+      <h1 style="margin-bottom:.3rem">🗄️ ${esc(o.name)}</h1>
+      ${o.farbe ? `<div class="muted">${dot(o.farbe)}Farbe: ${esc(o.farbe)}</div>` : ''}${o.notiz ? `<p>${esc(o.notiz)}</p>` : ''}
+      <div class="row" style="margin-top:.6rem">
+        <a class="btn small" href="#v/artikel/neu?ort=${o.id}">＋ Artikel hinzufügen</a>
+        <button class="btn small secondary" id="eo">✏️ Bearbeiten</button>
+        ${nfc ? '<button class="btn small secondary" id="nfc">📲 NFC-Tag beschreiben</button>' : ''}
+        <a class="btn small secondary" href="#v/etiketten/${o.id}">🏷️ QR-Etikett</a>
+        <button class="btn small secondary" id="cp">🔗 Link kopieren</button>
+        <button class="btn small danger" id="do">🗑️ Löschen</button>
+      </div>
+      <p class="muted" style="font-size:.85rem;margin-bottom:0">Link für NFC-Aufkleber: <code style="word-break:break-all">${esc(ortUrl(o.id))}</code></p>
+    </div>
+    <div id="list" class="list"></div>`;
+  const list = document.getElementById('list');
+  const render = () => { const n = vstate.items.filter(i => i.ort_id === o.id); list.innerHTML = n.map(vItem).join('') || '<div class="card center muted">Hier liegt noch nichts.</div>'; document.getElementById('do').classList.toggle('hidden', n.length > 0); };
+  bindQty(list, render); render();
+  document.getElementById('eo').onclick = async () => { if (await ortDialog(o)) route(); };
+  document.getElementById('cp').onclick = async () => { try { await navigator.clipboard.writeText(ortUrl(o.id)); toast('Link kopiert ✔'); } catch { prompt('Link kopieren:', ortUrl(o.id)); } };
+  document.getElementById('do').onclick = async () => { if (!confirm('Leeren Ort löschen?')) return; const { error } = await sb.from('vorrat_orte').delete().eq('id', o.id); if (error) return fail(error); vstate.orte = vstate.orte.filter(x => x.id !== o.id); location.hash = '#v/orte'; };
+  if (nfc) document.getElementById('nfc').onclick = () => writeNfc(ortUrl(o.id), 'diesen Ort');
+}
+
+function vLabels(id) {
+  const list = id ? vstate.orte.filter(o => o.id === Number(id)) : vstate.orte;
+  app.innerHTML = `
+    <div class="noprint"><a class="back" href="${id ? '#v/ort/' + id : '#v/orte'}">‹ Zurück</a><h1>🏷️ QR-Etiketten (Vorrat)</h1>
+      <p class="muted">Ausdrucken und ans Regal/Fach kleben. Mit der Handy-Kamera scannen öffnet den Ort.</p>
+      <button class="btn" onclick="window.print()">🖨️ Drucken</button><div style="height:1rem"></div></div>
+    <div class="labels">${list.map(o => `<div class="label">
+      ${id ? '' : '<label class="noprint" style="margin:0;font-weight:400"><input type="checkbox" checked data-skip> drucken</label>'}
+      ${qrSvg(ortUrl(o.id))}<div class="ln" style="font-size:1.15rem">${esc(o.name)}</div><div class="lt">Vorratskammer</div></div>`).join('') || '<p class="muted">Noch keine Orte.</p>'}</div>`;
+  app.querySelectorAll('[data-skip]').forEach(cb => cb.onchange = () => cb.closest('.label').classList.toggle('skip', !cb.checked));
+}
+
+// ---------- Einkaufsliste ----------
+function vEinkauf() {
+  const low = vstate.items.filter(isLow);
+  const line = i => `${i.name}: ${dec(Number(i.mindestbestand) - Number(i.menge))} ${i.einheit || ''} (da: ${dec(i.menge)}, min: ${dec(i.mindestbestand)})`.replace(/\s+\(/, ' (');
+  app.innerHTML = `
+    <h1>🛒 Einkaufsliste</h1>
+    <p class="muted">Alles, was unter dem Mindestbestand liegt.</p>
+    ${low.length ? `<button class="btn block" id="copy" style="margin-bottom:.8rem">📋 Liste kopieren</button>` : ''}
+    <div id="list" class="list"></div>`;
+  const list = document.getElementById('list');
+  const render = () => { const l = vstate.items.filter(isLow); list.innerHTML = l.map(i => vItem(i).replace('<div class="sub">', `<div class="sub"><b>Fehlt: ${dec(Number(i.mindestbestand) - Number(i.menge))} ${esc(i.einheit || '')}</b> · `)).join('') || '<div class="card center">🎉 Alles da – nichts unter Mindestbestand.</div>'; };
+  bindQty(list, render); render();
+  const c = document.getElementById('copy');
+  if (c) c.onclick = async () => {
+    const txt = 'Einkaufsliste:\n' + vstate.items.filter(isLow).map(i => '• ' + line(i)).join('\n');
+    try { await navigator.clipboard.writeText(txt); toast('Einkaufsliste kopiert ✔'); } catch { prompt('Kopieren:', txt); }
+  };
+}
+
+// ---------- Übersicht & CSV ----------
+function vStats() {
+  const it = vstate.items;
+  const bald = it.filter(i => mhdState(i) === 'warn'), weg = it.filter(i => mhdState(i) === 'bad');
+  const wert = it.reduce((s, i) => s + (Number(i.preis) || 0) * (Number(i.menge) || 0), 0);
+  const soon = it.filter(i => mhdState(i)).sort((a, b) => mhdDays(a) - mhdDays(b));
+  app.innerHTML = `
+    <h1>📊 Übersicht Vorrat</h1>
+    <div class="stats">
+      <div class="stat"><b>${num(it.length)}</b>Artikel</div>
+      <div class="stat"><b style="color:#e65100">${num(bald.length)}</b>MHD in ≤ 14 Tagen</div>
+      <div class="stat"><b style="color:var(--red)">${num(weg.length)}</b>abgelaufen</div>
+      <div class="stat"><b>${num(it.filter(isLow).length)}</b>unter Mindestbestand</div>
+      <div class="stat"><b>${euro(wert)}</b>Gesamtwert</div>
+      <div class="stat"><b>${num(vstate.orte.length)}</b>Orte</div>
+    </div>
+    ${soon.length ? `<h2>Bald verbrauchen</h2><div id="list" class="list">${soon.map(vItem).join('')}</div>` : ''}
+    <h2>Export</h2>
+    <div class="card"><p style="margin-top:0">Gesamten Vorrat als Tabelle (CSV für Excel/Numbers).</p><button class="btn block" id="csv">⬇️ CSV herunterladen</button></div>`;
+  const l = document.getElementById('list'); if (l) bindQty(l, () => route());
+  document.getElementById('csv').onclick = vExportCsv;
+}
+
+function vExportCsv() {
+  const head = ['Name', 'Kategorie', 'Menge', 'Einheit', 'Mindestbestand', 'MHD', 'Preis', 'Wert gesamt', 'Ort', 'Barcode', 'Notiz', 'Status'];
+  const cell = v => { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const d = n => n == null ? '' : String(n).replace('.', ',');
+  const rows = vstate.items.map(i => [i.name, i.kategorie, d(i.menge), i.einheit, d(i.mindestbestand), i.mhd ? new Date(i.mhd + 'T00:00:00').toLocaleDateString('de-DE') : '', d(i.preis),
+    i.preis != null ? d((Number(i.preis) * Number(i.menge)).toFixed(2)) : '', ortById(i.ort_id)?.name, i.barcode, i.notiz,
+    [mhdState(i) === 'bad' ? 'abgelaufen' : mhdState(i) === 'warn' ? 'MHD bald' : '', isLow(i) ? 'nachkaufen' : ''].filter(Boolean).join(', ')]);
+  const csv = '\ufeff' + [head, ...rows].map(r => r.map(cell).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `vorratskammer-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 // ---------- Start ----------

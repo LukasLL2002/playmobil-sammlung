@@ -71,5 +71,24 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .label .ln{font-size:1.4rem;font-weight:800}
 .label .lt{font-size:.9rem}
 .label input[type=checkbox]{width:auto}
+#modebar{display:flex;gap:.4rem;max-width:900px;margin:.7rem auto 0;padding:0 1rem}
+#modebar a{flex:1;text-align:center;padding:.7rem .5rem;border-radius:12px;background:#fff;color:var(--muted);text-decoration:none;font-weight:700;border:2px solid var(--border)}
+#modebar a.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+body.mode-v #modebar a.active{background:#2e7d32;border-color:#2e7d32}
+body.mode-v #topbar{background:#2e7d32}
+body.mode-v #tabbar a.active{color:#2e7d32}
+.vitem{display:flex;gap:.6rem;align-items:center;background:#fff;border-radius:var(--radius);padding:.6rem;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:6px solid transparent}
+.vitem.warn{border-left-color:#f57c00}
+.vitem.bad{border-left-color:var(--red)}
+.vitem .info{flex:1;min-width:0;text-decoration:none;color:inherit}
+.vitem .title{font-weight:700;overflow-wrap:anywhere}
+.vitem .sub{color:var(--muted);font-size:.88rem}
+.qty{display:flex;align-items:center;gap:.3rem}
+.qty button{width:44px;height:44px;border-radius:50%;border:0;font-size:1.4rem;font-weight:700;background:var(--blue-l);color:var(--blue);cursor:pointer}
+body.mode-v .qty button{background:#e8f5e9;color:#2e7d32}
+.qty .n{min-width:3.2em;text-align:center;font-weight:800;line-height:1.1}
+.qty .n small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+.badge.orange{background:#fff3e0;color:#e65100}
+.scanbox video{width:100%;border-radius:12px;background:#000}
 @media (min-width:700px){body{padding-bottom:0}#tabbar{position:sticky;top:52px;bottom:auto;border:0;border-bottom:1px solid var(--border);max-width:none}#tabbar a{flex-direction:row;justify-content:center;gap:.4rem;font-size:1rem;padding:.7rem}#tabbar a span{font-size:1.2rem}.fab{bottom:2rem;right:2rem}#toast{bottom:2rem}}
 @media print{#topbar,#tabbar,.noprint,.fab,#toast{display:none!important}body{background:#fff;padding:0}main{max-width:none;padding:0}.label{border:1px dashed #666}.label.skip{display:none}}

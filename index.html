@@ -4,26 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1565c0">
-<title>Playmobil-Sammlung</title>
+<title>Playmobil & Vorrat</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header id="topbar" class="hidden">
-  <a href="#teile" class="brand">🧸 Playmobil-Sammlung</a>
+  <a href="#" class="brand" id="brand">🧸 Playmobil-Sammlung</a>
   <button id="logoutBtn" class="btn-link">Abmelden</button>
 </header>
 
+<div id="modebar" class="hidden">
+  <a href="#teile" data-mode="pm">🧸 Playmobil</a>
+  <a href="#v/liste" data-mode="v">🥫 Vorratskammer</a>
+</div>
+
+<nav id="tabbar" class="hidden"></nav>
 <main id="app">
   <div class="center muted" style="padding:3rem">Lädt …</div>
 </main>
 
-<nav id="tabbar" class="hidden">
-  <a href="#teile" data-tab="teile"><span>🔍</span>Teile</a>
-  <a href="#kisten" data-tab="kisten"><span>📦</span>Kisten</a>
-  <a href="#sets" data-tab="sets"><span>🏰</span>Sets</a>
-  <a href="#uebersicht" data-tab="uebersicht"><span>📊</span>Übersicht</a>
-</nav>
 
 <div id="toast" class="hidden"></div>
 
