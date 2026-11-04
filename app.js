@@ -8,7 +8,7 @@ const BUCKET = 'bilder';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const state = { user: null, kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
+const state = { user: null, isAdmin: false, viewUid: null, viewEmail: null, kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
   filter: { q: '', farbe: '', kiste: '', set: '' } };
 const app = document.getElementById('app');
 
@@ -20,7 +20,13 @@ const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u030
 const baseUrl = () => location.origin + location.pathname;
 const kisteUrl = id => baseUrl() + '#kiste/' + id;
 function toast(msg, ms = 2500) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
-function fail(err) { console.error(err); toast('Fehler: ' + (err?.message || err), 5000); }
+function fail(err) {
+  console.error(err);
+  const msg = err?.code === '23505' ? 'Diese Nummer gibt es bei dir schon – bitte eine andere wählen.' : err?.code === '23503' ? 'Verknüpfung nicht erlaubt (gehört zu einem anderen Konto).' : (err?.message || err);
+  toast('Fehler: ' + msg, 5000);
+}
+// Wessen Daten werden angezeigt? Normal: eigene. Admin kann andere Konten ansehen.
+const owner = () => state.viewUid || state.user.id;
 const kisteById = id => state.kisten.find(k => k.id === Number(id));
 const setById = id => state.sets.find(s => s.id === Number(id));
 const kisteLabel = k => k ? `${k.art} ${k.nummer}${k.name ? ' – ' + k.name : ''}` : '';
@@ -35,9 +41,9 @@ const dot = f => { const c = FARBEN[norm(f).trim()]; return c ? `<span class="co
 // ---------- Daten ----------
 async function loadAll() {
   const [k, s, t] = await Promise.all([
-    sb.from('kisten').select('*'),
-    sb.from('sets').select('*'),
-    sb.from('teile').select('*, teil_sets(set_id)').order('created_at', { ascending: false }),
+    sb.from('kisten').select('*').eq('user_id', owner()),
+    sb.from('sets').select('*').eq('user_id', owner()),
+    sb.from('teile').select('*, teil_sets(set_id)').eq('user_id', owner()).order('created_at', { ascending: false }),
   ]);
   for (const r of [k, s, t]) if (r.error) throw r.error;
   state.kisten = k.data.sort((a, b) => sortNat(a.nummer, b.nummer));
@@ -61,17 +67,41 @@ const thumb = t => { const u = imgUrl(t); return u ? `<img class="thumb" src="${
 async function initAuth() {
   const { data } = await sb.auth.getSession();
   state.user = data.session?.user || null;
+  await checkAdmin();
   sb.auth.onAuthStateChange((_e, session) => {
     const was = !!state.user; state.user = session?.user || null;
-    if (was !== !!state.user) { state.loaded = false; vstate.loaded = false; setTimeout(route, 0); }
+    if (was !== !!state.user) { resetView(); state.isAdmin = false; setTimeout(async () => { await checkAdmin(); route(); }, 0); }
   });
 }
-document.getElementById('logoutBtn').onclick = async () => { await sb.auth.signOut(); };
+document.getElementById('logoutBtn').onclick = async () => { sessionStorage.removeItem('viewAs'); await sb.auth.signOut(); };
+async function checkAdmin() {
+  state.isAdmin = false;
+  if (!state.user) return;
+  const { data, error } = await sb.rpc('is_admin');
+  state.isAdmin = !error && data === true;
+  const va = JSON.parse(sessionStorage.getItem('viewAs') || 'null');
+  if (state.isAdmin && va && va.id !== state.user.id) { state.viewUid = va.id; state.viewEmail = va.email; }
+}
+function resetView() { state.loaded = false; vstate.loaded = false; state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; }
+function viewAs(id, email) {
+  if (id && id !== state.user.id) { state.viewUid = id; state.viewEmail = email; sessionStorage.setItem('viewAs', JSON.stringify({ id, email })); }
+  else { state.viewUid = null; state.viewEmail = null; sessionStorage.removeItem('viewAs'); }
+  resetView();
+}
+function renderChrome() {
+  const w = document.getElementById('who'); w.textContent = state.user?.email || ''; w.title = 'Angemeldet als ' + w.textContent;
+  const ban = document.getElementById('adminBanner');
+  ban.classList.toggle('hidden', !state.viewUid);
+  if (state.viewUid) ban.innerHTML = `🛡️ Admin-Ansicht: Daten von <b>${esc(state.viewEmail)}</b> <button class="btn small secondary" id="exitView">Zurück zu meinen Daten</button>`;
+  const ex = document.getElementById('exitView'); if (ex) ex.onclick = () => { viewAs(null); location.hash = '#admin'; route(); };
+  document.querySelector('#modebar a[data-mode="admin"]').classList.toggle('hidden', !state.isAdmin);
+}
 
 function renderLogin() {
   document.getElementById('topbar').classList.add('hidden');
   document.getElementById('tabbar').classList.add('hidden');
   document.getElementById('modebar').classList.add('hidden');
+  document.getElementById('adminBanner').classList.add('hidden');
   app.innerHTML = `
   <div class="login card">
     <div class="logo">🧸</div>
@@ -122,15 +152,17 @@ function setMode(mode, tab) {
   document.getElementById('brand').href = mode === 'v' ? '#v/liste' : '#teile';
   document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
   const nav = document.getElementById('tabbar');
-  nav.innerHTML = TABS[mode].map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}</span>${l}</a>`).join('');
+  nav.innerHTML = (TABS[mode] || []).map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}</span>${l}</a>`).join('');
 }
 async function route() {
   if (!state.user) return renderLogin();
   ['topbar', 'tabbar', 'modebar'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+  renderChrome();
   if (!location.hash || location.hash === '#') { location.replace('#' + (localStorage.getItem('modus') === 'v' ? 'v/liste' : 'teile')); return; }
   const parts = location.hash.slice(1).split('/');
   window.scrollTo(0, 0);
   if (parts[0] === 'v') return routeVorrat(parts[1] || 'liste', parts[2]);
+  if (parts[0] === 'admin') return viewAdmin();
   if (!state.loaded) {
     setMode('pm', '');
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Sammlung …</div>';
@@ -300,17 +332,17 @@ function teilForm(t) {
       if (file) {
         toast('Foto wird hochgeladen …', 10000);
         const blob = await shrinkImage(file);
-        const path = `${crypto.randomUUID()}.${blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase()}`;
+        const path = `${owner()}/teile/${crypto.randomUUID()}.${blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase()}`;
         const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
         if (up.error) throw up.error;
         row.bild_url = path;
       }
       let saved;
-      if (isNew) { const r = await sb.from('teile').insert(row).select().single(); if (r.error) throw r.error; saved = r.data; }
+      if (isNew) { const r = await sb.from('teile').insert({ ...row, user_id: owner() }).select().single(); if (r.error) throw r.error; saved = r.data; }
       else { const r = await sb.from('teile').update(row).eq('id', t.id).select().single(); if (r.error) throw r.error; saved = r.data; }
       const before = (t.teil_sets || []).map(x => x.set_id);
       const add = chosenSets.filter(x => !before.includes(x)), rem = before.filter(x => !chosenSets.includes(x));
-      if (add.length) { const r = await sb.from('teil_sets').insert(add.map(set_id => ({ teil_id: saved.id, set_id }))); if (r.error) throw r.error; }
+      if (add.length) { const r = await sb.from('teil_sets').insert(add.map(set_id => ({ teil_id: saved.id, set_id, user_id: owner() }))); if (r.error) throw r.error; }
       if (rem.length) { const r = await sb.from('teil_sets').delete().eq('teil_id', saved.id).in('set_id', rem); if (r.error) throw r.error; }
       if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
       saved.teil_sets = chosenSets.map(set_id => ({ set_id }));
@@ -365,7 +397,7 @@ function kisteDialog(k) {
     <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
   dialog.current._save = async d => {
     const row = formVals(d.querySelector('form'), ['art', 'nummer', 'farbe', 'name', 'ort', 'notiz']);
-    const r = k ? await sb.from('kisten').update(row).eq('id', k.id).select().single() : await sb.from('kisten').insert(row).select().single();
+    const r = k ? await sb.from('kisten').update(row).eq('id', k.id).select().single() : await sb.from('kisten').insert({ ...row, user_id: owner() }).select().single();
     if (r.error) throw r.error;
     state.kisten = (k ? state.kisten.map(x => x.id === k.id ? r.data : x) : [...state.kisten, r.data]).sort((a, b) => sortNat(a.nummer, b.nummer));
     toast('Kiste gespeichert ✔'); return r.data;
@@ -380,7 +412,7 @@ function setDialog(s) {
     <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
   dialog.current._save = async d => {
     const row = formVals(d.querySelector('form'), ['set_nummer', 'name', 'notiz']);
-    const r = s ? await sb.from('sets').update(row).eq('id', s.id).select().single() : await sb.from('sets').insert(row).select().single();
+    const r = s ? await sb.from('sets').update(row).eq('id', s.id).select().single() : await sb.from('sets').insert({ ...row, user_id: owner() }).select().single();
     if (r.error) throw r.error;
     state.sets = (s ? state.sets.map(x => x.id === s.id ? r.data : x) : [...state.sets, r.data]).sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
     toast('Set gespeichert ✔'); return r.data;
@@ -556,7 +588,7 @@ const mhdText = it => { const d = mhdDays(it); if (d == null) return ''; const d
 const vsort = (a, b) => a.name.localeCompare(b.name, 'de');
 
 async function loadVorrat() {
-  const [o, v] = await Promise.all([sb.from('vorrat_orte').select('*'), sb.from('vorrat').select('*')]);
+  const [o, v] = await Promise.all([sb.from('vorrat_orte').select('*').eq('user_id', owner()), sb.from('vorrat').select('*').eq('user_id', owner())]);
   for (const r of [o, v]) if (r.error) throw r.error;
   vstate.orte = o.data.sort((a, b) => sortNat(a.name, b.name));
   vstate.items = v.data.sort(vsort);
@@ -748,12 +780,12 @@ function vForm(id) {
       if (file) {
         toast('Foto wird hochgeladen …', 10000);
         const blob = await shrinkImage(file);
-        const path = `vorrat/${crypto.randomUUID()}.jpg`;
+        const path = `${owner()}/vorrat/${crypto.randomUUID()}.jpg`;
         const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
         if (up.error) throw up.error;
         row.bild_url = path;
       }
-      const r = isNew ? await sb.from('vorrat').insert(row).select().single() : await sb.from('vorrat').update(row).eq('id', it.id).select().single();
+      const r = isNew ? await sb.from('vorrat').insert({ ...row, user_id: owner() }).select().single() : await sb.from('vorrat').update(row).eq('id', it.id).select().single();
       if (r.error) throw r.error;
       if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
       await loadImageUrls([r.data]);
@@ -776,7 +808,7 @@ function ortDialog(o) {
     <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
   dialog.current._save = async d => {
     const row = formVals(d.querySelector('form'), ['name', 'farbe', 'notiz']);
-    const r = o ? await sb.from('vorrat_orte').update(row).eq('id', o.id).select().single() : await sb.from('vorrat_orte').insert(row).select().single();
+    const r = o ? await sb.from('vorrat_orte').update(row).eq('id', o.id).select().single() : await sb.from('vorrat_orte').insert({ ...row, user_id: owner() }).select().single();
     if (r.error) throw r.error;
     vstate.orte = (o ? vstate.orte.map(x => x.id === o.id ? r.data : x) : [...vstate.orte, r.data]).sort((a, b) => sortNat(a.name, b.name));
     toast('Ort gespeichert ✔'); return r.data;
@@ -889,6 +921,73 @@ function vExportCsv() {
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `vorratskammer-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
+}
+
+// =====================================================================
+// ---------- Admin-Bereich (nur sichtbar, wenn is_admin()) ----------
+// =====================================================================
+async function removeUserFiles(uid) {
+  const all = [];
+  for (const dir of [uid, `${uid}/teile`, `${uid}/vorrat`]) {
+    let offset = 0;
+    for (;;) {
+      const { data, error } = await sb.storage.from(BUCKET).list(dir, { limit: 1000, offset });
+      if (error) throw error;
+      const files = data.filter(f => f.id); // Ordner haben keine id
+      all.push(...files.map(f => `${dir}/${f.name}`));
+      if (data.length < 1000) break; offset += 1000;
+    }
+  }
+  for (let i = 0; i < all.length; i += 100) { const { error } = await sb.storage.from(BUCKET).remove(all.slice(i, i + 100)); if (error) throw error; }
+  return all.length;
+}
+async function resetUser(u) {
+  const files = await removeUserFiles(u.id);
+  const { data, error } = await sb.rpc('admin_reset_user', { target: u.id });
+  if (error) throw error;
+  return { ...data, bilder: files };
+}
+
+async function viewAdmin() {
+  setMode('admin', '');
+  if (!state.isAdmin) { app.innerHTML = '<div class="card">Kein Zugriff – nur für Admins.</div>'; return; }
+  app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Benutzer …</div>';
+  const { data: users, error } = await sb.rpc('admin_list_users');
+  if (error) { fail(error); app.innerHTML = '<div class="card">Benutzerliste konnte nicht geladen werden.</div>'; return; }
+  app.innerHTML = `
+    <h1>🛡️ Admin</h1>
+    <p class="muted">${num(users.length)} Konten. Du kannst die Daten jedes Kontos ansehen und bearbeiten oder zurücksetzen.</p>
+    <div class="list">${users.map(u => `<div class="card" style="margin:0">
+      <div style="font-weight:700;overflow-wrap:anywhere">${esc(u.email || u.id)} ${u.is_admin ? '<span class="badge">Admin</span>' : ''}${u.id === state.user.id ? '<span class="badge green">du</span>' : ''}</div>
+      <div class="sub muted" style="font-size:.85rem">Registriert ${new Date(u.created_at).toLocaleDateString('de-DE')}${u.last_sign_in_at ? ' · zuletzt angemeldet ' + new Date(u.last_sign_in_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
+      <p style="margin:.4rem 0"><span class="badge">🧸 ${num(u.teile)} Teile · ${num(u.kisten)} Kisten · ${num(u.sets)} Sets</span><span class="badge green">🥫 ${num(u.vorrat)} Artikel · ${num(u.vorrat_orte)} Orte</span></p>
+      <div class="row">
+        <button class="btn small" data-act="pm" data-id="${u.id}">🧸 Playmobil ansehen</button>
+        <button class="btn small" data-act="v" data-id="${u.id}" style="background:#2e7d32">🥫 Vorrat ansehen</button>
+        <button class="btn small danger" data-act="reset" data-id="${u.id}">♻️ Daten zurücksetzen</button>
+      </div></div>`).join('')}</div>
+    <h2>Gefahrenzone</h2>
+    <div class="card"><p style="margin-top:0">Alle Daten <b>aller</b> Konten löschen (Konten selbst bleiben bestehen).</p>
+      <button class="btn danger block" id="resetAll">♻️ Alles zurücksetzen</button></div>`;
+  app.querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
+    const u = users.find(x => x.id === b.dataset.id);
+    if (b.dataset.act === 'reset') {
+      const typed = prompt(`ACHTUNG: Alle Playmobil- und Vorrats-Daten inkl. Fotos von\n${u.email}\nwerden endgültig gelöscht.\n\nZum Bestätigen die E-Mail-Adresse eintippen:`);
+      if (typed == null) return;
+      if (typed.trim().toLowerCase() !== String(u.email).toLowerCase()) return toast('E-Mail stimmt nicht – nichts gelöscht.');
+      try { b.disabled = true; const r = await resetUser(u); toast(`Zurückgesetzt: ${r.teile} Teile, ${r.vorrat} Artikel, ${r.bilder} Fotos gelöscht.`, 5000); if (u.id === owner()) resetView(); viewAdmin(); }
+      catch (e) { fail(e); b.disabled = false; }
+      return;
+    }
+    viewAs(u.id, u.email);
+    location.hash = b.dataset.act === 'v' ? '#v/liste' : '#teile';
+  });
+  document.getElementById('resetAll').onclick = async () => {
+    const typed = prompt(`ACHTUNG: Die Daten ALLER ${users.length} Konten (inkl. deiner eigenen) werden endgültig gelöscht.\n\nZum Bestätigen „ALLES LÖSCHEN“ eintippen:`);
+    if (typed == null) return;
+    if (typed.trim() !== 'ALLES LÖSCHEN') return toast('Eingabe stimmt nicht – nichts gelöscht.');
+    try { for (const u of users) await resetUser(u); resetView(); toast('Alle Daten zurückgesetzt.', 4000); viewAdmin(); } catch (e) { fail(e); }
+  };
 }
 
 // ---------- Start ----------

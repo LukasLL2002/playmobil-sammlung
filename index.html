@@ -11,14 +11,16 @@
 <body>
 <header id="topbar" class="hidden">
   <a href="#" class="brand" id="brand">🧸 Playmobil-Sammlung</a>
-  <button id="logoutBtn" class="btn-link">Abmelden</button>
+  <span class="who"><span id="who"></span><button id="logoutBtn" class="btn-link">Abmelden</button></span>
 </header>
 
 <div id="modebar" class="hidden">
   <a href="#teile" data-mode="pm">🧸 Playmobil</a>
   <a href="#v/liste" data-mode="v">🥫 Vorratskammer</a>
+  <a href="#admin" data-mode="admin" class="hidden admin-tab">🛡️<span class="lbl"> Admin</span></a>
 </div>
 
+<div id="adminBanner" class="hidden"></div>
 <nav id="tabbar" class="hidden"></nav>
 <main id="app">
   <div class="center muted" style="padding:3rem">Lädt …</div>

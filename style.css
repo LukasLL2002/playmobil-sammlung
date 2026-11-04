@@ -71,6 +71,15 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .label .ln{font-size:1.4rem;font-weight:800}
 .label .lt{font-size:.9rem}
 .label input[type=checkbox]{width:auto}
+.who{display:flex;align-items:center;gap:.6rem;min-width:0}
+#who{font-size:.8rem;opacity:.9;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#modebar a{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#modebar a.admin-tab{flex:0 0 auto;padding:.7rem .8rem}
+#topbar .brand{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-right:.5rem}
+@media (max-width:520px){#modebar a.admin-tab .lbl{display:none}#modebar a{font-size:.95rem;padding:.65rem .3rem}.who{flex-direction:column;align-items:flex-end;gap:0}#who{max-width:48vw;font-size:.75rem}}
+#modebar a.admin-tab.active{background:#6a1b9a;border-color:#6a1b9a}
+#adminBanner{max-width:900px;margin:.6rem auto 0;padding:.6rem 1rem;background:#f3e5f5;color:#4a148c;border-radius:12px;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between}
+@media (max-width:930px){#adminBanner{margin:.6rem 1rem 0}}
 #modebar{display:flex;gap:.4rem;max-width:900px;margin:.7rem auto 0;padding:0 1rem}
 #modebar a{flex:1;text-align:center;padding:.7rem .5rem;border-radius:12px;background:#fff;color:var(--muted);text-decoration:none;font-weight:700;border:2px solid var(--border)}
 #modebar a.active{background:var(--blue);color:#fff;border-color:var(--blue)}
