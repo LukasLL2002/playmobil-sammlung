@@ -78,6 +78,13 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 #topbar .brand{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-right:.5rem}
 @media (max-width:520px){#modebar a.admin-tab .lbl{display:none}#modebar a{font-size:.95rem;padding:.65rem .3rem}.who{flex-direction:column;align-items:flex-end;gap:0}#who{max-width:48vw;font-size:.75rem}}
 #modebar a.admin-tab.active{background:#6a1b9a;border-color:#6a1b9a}
+#adminBanner .switch{display:flex;align-items:center;gap:.5rem;font-weight:600;flex:1;min-width:0}
+#adminBanner select{flex:1;min-width:0;margin:0}
+#adminBanner:not(.admin){background:#e3f2fd;color:#0d47a1}
+body.mode-v #adminBanner:not(.admin){background:#e8f5e9;color:#1b5e20}
+.tabbadge{display:inline-block;background:#d32f2f;color:#fff;border-radius:9px;font-size:.65rem;padding:0 .35rem;margin-left:-.3rem;vertical-align:top}
+body.readonly .fab,body.readonly #del,body.readonly #nk,body.readonly #ek,body.readonly #dk,body.readonly #ns,body.readonly #es,body.readonly #ds,body.readonly #no,body.readonly #eo,body.readonly #do,body.readonly .qty button,body.readonly a[href*=":bearbeiten"],body.readonly a[href*="/neu"]{display:none!important}
+dialog ul{padding-left:1.2rem}dialog li{margin:.3rem 0}
 #adminBanner{max-width:900px;margin:.6rem auto 0;padding:.6rem 1rem;background:#f3e5f5;color:#4a148c;border-radius:12px;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between}
 @media (max-width:930px){#adminBanner{margin:.6rem 1rem 0}}
 #modebar{display:flex;gap:.4rem;max-width:900px;margin:.7rem auto 0;padding:0 1rem}
@@ -101,3 +108,4 @@ body.mode-v .qty button{background:#e8f5e9;color:#2e7d32}
 .scanbox video{width:100%;border-radius:12px;background:#000}
 @media (min-width:700px){body{padding-bottom:0}#tabbar{position:sticky;top:52px;bottom:auto;border:0;border-bottom:1px solid var(--border);max-width:none}#tabbar a{flex-direction:row;justify-content:center;gap:.4rem;font-size:1rem;padding:.7rem}#tabbar a span{font-size:1.2rem}.fab{bottom:2rem;right:2rem}#toast{bottom:2rem}}
 @media print{#topbar,#tabbar,.noprint,.fab,#toast{display:none!important}body{background:#fff;padding:0}main{max-width:none;padding:0}.label{border:1px dashed #666}.label.skip{display:none}}
+.card .btn-link{color:var(--blue);font-size:.85rem}

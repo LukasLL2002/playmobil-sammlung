@@ -8,7 +8,7 @@ const BUCKET = 'bilder';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const state = { user: null, isAdmin: false, viewUid: null, viewEmail: null, kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
+const state = { user: null, isAdmin: false, viewUid: null, viewEmail: null, viewKind: null, viewRecht: null, viewBereich: null, shares: [], merges: [], kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
   filter: { q: '', farbe: '', kiste: '', set: '' } };
 const app = document.getElementById('app');
 
@@ -22,7 +22,7 @@ const kisteUrl = id => baseUrl() + '#kiste/' + id;
 function toast(msg, ms = 2500) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
 function fail(err) {
   console.error(err);
-  const msg = err?.code === '23505' ? 'Diese Nummer gibt es bei dir schon – bitte eine andere wählen.' : err?.code === '23503' ? 'Verknüpfung nicht erlaubt (gehört zu einem anderen Konto).' : (err?.message || err);
+  const msg = err?.code === '42501' ? 'Keine Berechtigung (evtl. nur Leserecht).' : err?.code === '23505' ? 'Diese Nummer gibt es bei dir schon – bitte eine andere wählen.' : err?.code === '23503' ? 'Verknüpfung nicht erlaubt (gehört zu einem anderen Konto).' : (err?.message || err);
   toast('Fehler: ' + msg, 5000);
 }
 // Wessen Daten werden angezeigt? Normal: eigene. Admin kann andere Konten ansehen.
@@ -79,22 +79,66 @@ async function checkAdmin() {
   if (!state.user) return;
   const { data, error } = await sb.rpc('is_admin');
   state.isAdmin = !error && data === true;
+  await loadSocial();
   const va = JSON.parse(sessionStorage.getItem('viewAs') || 'null');
-  if (state.isAdmin && va && va.id !== state.user.id) { state.viewUid = va.id; state.viewEmail = va.email; }
+  if (va && va.id !== state.user.id) {
+    if (va.kind === 'admin' && state.isAdmin) Object.assign(state, { viewUid: va.id, viewEmail: va.email, viewKind: 'admin', viewRecht: 'bearbeiten', viewBereich: 'beide' });
+    else { const sh = shareOf(va.id); if (sh) viewAsShare(sh); }
+  }
 }
 function resetView() { state.loaded = false; vstate.loaded = false; state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; }
-function viewAs(id, email) {
-  if (id && id !== state.user.id) { state.viewUid = id; state.viewEmail = email; sessionStorage.setItem('viewAs', JSON.stringify({ id, email })); }
-  else { state.viewUid = null; state.viewEmail = null; sessionStorage.removeItem('viewAs'); }
+// kind: 'admin' (Admin sieht fremde Daten) oder 'share' (mit mir geteilte Sammlung)
+function viewAs(id, email, kind = 'admin', recht = 'bearbeiten', bereich = 'beide') {
+  if (id && id !== state.user.id) {
+    Object.assign(state, { viewUid: id, viewEmail: email, viewKind: kind, viewRecht: recht, viewBereich: bereich });
+    sessionStorage.setItem('viewAs', JSON.stringify({ id, email, kind }));
+  } else {
+    Object.assign(state, { viewUid: null, viewEmail: null, viewKind: null, viewRecht: null, viewBereich: null });
+    sessionStorage.removeItem('viewAs');
+  }
   resetView();
 }
-function renderChrome() {
+const covers = (bereich, section) => bereich === 'beide' || bereich === section;
+const shareOf = ownerId => state.shares.find(f => f.owner_id === ownerId && f.member_id === state.user.id && f.status === 'angenommen');
+const viewAsShare = f => viewAs(f.owner_id, f.owner_email, 'share', f.recht, f.bereich);
+const sharesFor = section => state.shares.filter(f => f.member_id === state.user.id && f.status === 'angenommen' && covers(f.bereich, section));
+const pendingCount = () => state.shares.filter(f => f.member_id === state.user.id && f.status === 'eingeladen').length
+  + state.merges.filter(z => z.status === 'offen' && z.antragsteller_id !== state.user.id && [z.von_id, z.nach_id].includes(state.user.id)).length;
+
+async function loadSocial() {
+  const [f, z] = await Promise.all([sb.rpc('meine_freigaben'), sb.rpc('meine_zusammenfuehrungen')]);
+  state.shares = f.error ? [] : f.data; state.merges = z.error ? [] : z.data;
+  if (f.error || z.error) console.warn(f.error || z.error);
+  // Unterbrochene Zusammenführung? Fotos fertig verschieben.
+  for (const m of state.merges.filter(m => m.status === 'angenommen' && m.ergebnis)) finishMerge({ ...m.ergebnis, id: m.id }).catch(console.warn);
+}
+
+function renderChrome(mode) {
   const w = document.getElementById('who'); w.textContent = state.user?.email || ''; w.title = 'Angemeldet als ' + w.textContent;
-  const ban = document.getElementById('adminBanner');
-  ban.classList.toggle('hidden', !state.viewUid);
-  if (state.viewUid) ban.innerHTML = `🛡️ Admin-Ansicht: Daten von <b>${esc(state.viewEmail)}</b> <button class="btn small secondary" id="exitView">Zurück zu meinen Daten</button>`;
-  const ex = document.getElementById('exitView'); if (ex) ex.onclick = () => { viewAs(null); location.hash = '#admin'; route(); };
   document.querySelector('#modebar a[data-mode="admin"]').classList.toggle('hidden', !state.isAdmin);
+  const section = mode === 'v' ? 'vorrat' : 'playmobil';
+  const ban = document.getElementById('adminBanner');
+  const ro = state.viewKind === 'share' && state.viewRecht !== 'bearbeiten';
+  document.body.classList.toggle('readonly', ro && mode !== 'admin');
+  const shared = mode === 'admin' ? [] : sharesFor(section);
+  const show = mode !== 'admin' && (state.viewUid || shared.length);
+  ban.classList.toggle('hidden', !show);
+  ban.classList.toggle('admin', state.viewKind === 'admin');
+  if (!show) return;
+  if (state.viewKind === 'admin') {
+    ban.innerHTML = `<span>🛡️ Admin-Ansicht: Daten von <b>${esc(state.viewEmail)}</b></span> <button class="btn small secondary" id="exitView">Zurück zu meinen Daten</button>`;
+    document.getElementById('exitView').onclick = () => { viewAs(null); location.hash = '#admin'; };
+    return;
+  }
+  ban.innerHTML = `<label class="switch">Sammlung:
+      <select id="sammlung"><option value="">📁 Meine Sammlung</option>${shared.map(f => `<option value="${f.owner_id}" ${f.owner_id === state.viewUid ? 'selected' : ''}>👥 ${esc(f.owner_email)}</option>`).join('')}</select></label>
+    ${state.viewKind === 'share' ? `<span class="badge ${ro ? 'orange' : 'green'}">${ro ? '👁️ nur lesen' : '✏️ bearbeiten'}</span>` : ''}`;
+  document.getElementById('sammlung').onchange = e => {
+    const f = shareOf(e.target.value);
+    f ? viewAsShare(f) : viewAs(null);
+    location.hash = mode === 'v' ? '#v/liste' : '#teile';
+    route();
+  };
 }
 
 function renderLogin() {
@@ -142,8 +186,8 @@ function renderLogin() {
 
 // ---------- Router ----------
 const TABS = {
-  pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['sets', '🏰', 'Sets'], ['uebersicht', '📊', 'Übersicht']],
-  v: [['v/liste', '🔍', 'Vorrat'], ['v/orte', '🗄️', 'Orte'], ['v/einkauf', '🛒', 'Einkauf'], ['v/uebersicht', '📊', 'Übersicht']],
+  pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['sets', '🏰', 'Sets'], ['uebersicht', '📊', 'Übersicht'], ['teilen', '👥', 'Teilen']],
+  v: [['v/liste', '🔍', 'Vorrat'], ['v/orte', '🗄️', 'Orte'], ['v/einkauf', '🛒', 'Einkauf'], ['v/uebersicht', '📊', 'Übersicht'], ['v/teilen', '👥', 'Teilen']],
 };
 function setMode(mode, tab) {
   document.body.classList.toggle('mode-v', mode === 'v');
@@ -152,15 +196,22 @@ function setMode(mode, tab) {
   document.getElementById('brand').href = mode === 'v' ? '#v/liste' : '#teile';
   document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
   const nav = document.getElementById('tabbar');
-  nav.innerHTML = (TABS[mode] || []).map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}</span>${l}</a>`).join('');
+  const pend = pendingCount();
+  nav.innerHTML = (TABS[mode] || []).map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}${h.endsWith('teilen') && pend ? `<b class="tabbadge">${pend}</b>` : ''}</span>${l}</a>`).join('');
+  renderChrome(mode);
 }
 async function route() {
   if (!state.user) return renderLogin();
   ['topbar', 'tabbar', 'modebar'].forEach(id => document.getElementById(id).classList.remove('hidden'));
-  renderChrome();
   if (!location.hash || location.hash === '#') { location.replace('#' + (localStorage.getItem('modus') === 'v' ? 'v/liste' : 'teile')); return; }
   const parts = location.hash.slice(1).split('/');
   window.scrollTo(0, 0);
+  // Geteilte Sammlung deckt diesen Bereich nicht ab (oder Freigabe entzogen) → zurück zu „Meine“
+  if (state.viewKind === 'share') {
+    const f = shareOf(state.viewUid), section = parts[0] === 'v' ? 'vorrat' : 'playmobil';
+    if (!f || (parts[0] !== 'admin' && !covers(f.bereich, section))) viewAs(null);
+    else if (f.recht !== state.viewRecht || f.bereich !== state.viewBereich) Object.assign(state, { viewRecht: f.recht, viewBereich: f.bereich });
+  }
   if (parts[0] === 'v') return routeVorrat(parts[1] || 'liste', parts[2]);
   if (parts[0] === 'admin') return viewAdmin();
   if (!state.loaded) {
@@ -171,7 +222,7 @@ async function route() {
   const [view, id] = parts;
   const tab = { teil: 'teile', kiste: 'kisten', set: 'sets', etiketten: 'kisten' }[view] || view;
   setMode('pm', tab);
-  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort };
+  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil') };
   (views[view] || viewTeile)(id);
 }
 window.addEventListener('hashchange', route);
@@ -437,7 +488,7 @@ function viewKisten() {
 
 function viewKiste(id) {
   const k = kisteById(id);
-  if (!k) { app.innerHTML = '<div class="card">Diese Kiste gibt es (noch) nicht. <a href="#kisten">Alle Kisten</a></div>'; return; }
+  if (!k) { app.innerHTML = '<div class="card">Diese Kiste gibt es (noch) nicht. <a href="#kisten">Alle Kisten</a></div>'; openForeign('kisten', id); return; }
   const teile = state.teile.filter(t => t.kiste_id === k.id);
   const s = sumTeile(teile);
   const nfc = 'NDEFReader' in window;
@@ -603,7 +654,7 @@ async function routeVorrat(view, id) {
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Vorrat …</div>';
     try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
-  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels };
+  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat') };
   (views[view] || vListe)(id);
 }
 
@@ -828,7 +879,7 @@ function vOrte() {
 
 function vOrt(id) {
   const o = ortById(id);
-  if (!o) { app.innerHTML = '<div class="card">Diesen Ort gibt es (noch) nicht. <a href="#v/orte">Alle Orte</a></div>'; return; }
+  if (!o) { app.innerHTML = '<div class="card">Diesen Ort gibt es (noch) nicht. <a href="#v/orte">Alle Orte</a></div>'; openForeign('vorrat_orte', id); return; }
   const nfc = 'NDEFReader' in window;
   app.innerHTML = `
     <a class="back" href="#v/orte">‹ Alle Orte</a>
@@ -966,6 +1017,14 @@ async function viewAdmin() {
         <button class="btn small" data-act="v" data-id="${u.id}" style="background:#2e7d32">🥫 Vorrat ansehen</button>
         <button class="btn small danger" data-act="reset" data-id="${u.id}">♻️ Daten zurücksetzen</button>
       </div></div>`).join('')}</div>
+    <h2>Konten zusammenführen</h2>
+    <div class="card">
+      <p class="muted" style="margin-top:0">Verschiebt die Daten eines Kontos in ein anderes (ohne Zustimmung der Nutzer). Gleiche Kisten/Sets/Orte und gleiche Teile/Artikel werden zusammengelegt.</p>
+      <div class="grid2"><div><label>Von (Quelle)</label><select id="mVon">${users.map(u => `<option value="${u.id}">${esc(u.email)}</option>`).join('')}</select></div>
+      <div><label>Nach (Ziel)</label><select id="mNach">${users.map((u, i) => `<option value="${u.id}" ${i === 1 ? 'selected' : ''}>${esc(u.email)}</option>`).join('')}</select></div></div>
+      <label>Bereich</label><select id="mBer"><option value="beide">Playmobil + Vorratskammer</option><option value="playmobil">Nur Playmobil</option><option value="vorrat">Nur Vorratskammer</option></select>
+      <div style="height:.8rem"></div><button class="btn block" id="mGo">🔀 Vorschau &amp; zusammenführen</button>
+    </div>
     <h2>Gefahrenzone</h2>
     <div class="card"><p style="margin-top:0">Alle Daten <b>aller</b> Konten löschen (Konten selbst bleiben bestehen).</p>
       <button class="btn danger block" id="resetAll">♻️ Alles zurücksetzen</button></div>`;
@@ -979,14 +1038,179 @@ async function viewAdmin() {
       catch (e) { fail(e); b.disabled = false; }
       return;
     }
-    viewAs(u.id, u.email);
+    viewAs(u.id, u.email, 'admin');
     location.hash = b.dataset.act === 'v' ? '#v/liste' : '#teile';
   });
+  document.getElementById('mGo').onclick = async () => {
+    const von = users.find(u => u.id === document.getElementById('mVon').value), nach = users.find(u => u.id === document.getElementById('mNach').value);
+    const bereich = document.getElementById('mBer').value;
+    if (von.id === nach.id) return toast('Quelle und Ziel müssen verschieden sein.');
+    const { data: pv, error } = await sb.rpc('admin_merge_vorschau', { p_von: von.id, p_nach: nach.id, p_bereich: bereich });
+    if (error) return fail(error);
+    if (!await confirmDialog('Konten zusammenführen?', mergeSummary(pv, bereich, von.email, nach.email), '🔀 Jetzt zusammenführen')) return;
+    try {
+      const { data: res, error: e2 } = await sb.rpc('admin_zusammenfuehren', { p_von: von.id, p_nach: nach.id, p_bereich: bereich });
+      if (e2) throw e2;
+      await finishMerge(res); resetView(); toast(mergeDoneText(res), 6000); viewAdmin();
+    } catch (e) { fail(e); }
+  };
   document.getElementById('resetAll').onclick = async () => {
     const typed = prompt(`ACHTUNG: Die Daten ALLER ${users.length} Konten (inkl. deiner eigenen) werden endgültig gelöscht.\n\nZum Bestätigen „ALLES LÖSCHEN“ eintippen:`);
     if (typed == null) return;
     if (typed.trim() !== 'ALLES LÖSCHEN') return toast('Eingabe stimmt nicht – nichts gelöscht.');
     try { for (const u of users) await resetUser(u); resetView(); toast('Alle Daten zurückgesetzt.', 4000); viewAdmin(); } catch (e) { fail(e); }
+  };
+}
+
+// =====================================================================
+// ---------- Teilen & Zusammenführen ----------
+// =====================================================================
+const BEREICH_TXT = { playmobil: '🧸 Playmobil', vorrat: '🥫 Vorratskammer', beide: '🧸+🥫 beide Bereiche' };
+const RECHT_TXT = { lesen: '👁️ nur lesen', bearbeiten: '✏️ bearbeiten' };
+
+function confirmDialog(title, html, ok = 'OK', danger = false) {
+  const p = dialog(`<form><h2 style="margin-top:0">${title}</h2><div>${html}</div>
+    <div class="row" style="margin-top:1rem"><button type="button" class="btn secondary grow" data-cancel>Abbrechen</button><button class="btn grow ${danger ? 'danger' : ''}" type="submit">${ok}</button></div></form>`);
+  dialog.current._save = async () => true;
+  return p;
+}
+function mergeSummary(p, bereich, vonTxt, nachTxt) {
+  const li = [];
+  if (covers(bereich, 'playmobil')) li.push(`<li>🧸 <b>${num(p.teile)}</b> Teile (${num(p.stueck)} Stück)${p.teile_gleich ? ` – davon ${num(p.teile_gleich)} gleiche Teile (Nr.+Farbe, gleiche Kiste): Anzahl wird addiert` : ''}</li>
+    <li>📦 <b>${num(p.kisten)}</b> Kisten/Tüten${p.kisten_gleich ? ` – ${num(p.kisten_gleich)} mit gleicher Nummer werden zusammengelegt` : ''}</li>
+    <li>🏰 <b>${num(p.sets)}</b> Sets${p.sets_gleich ? ` – ${num(p.sets_gleich)} mit gleicher Set-Nummer werden zusammengelegt` : ''}</li>
+    <li>📷 ${num(p.bilder_teile)} Fotos</li>`);
+  if (covers(bereich, 'vorrat')) li.push(`<li>🥫 <b>${num(p.vorrat)}</b> Artikel${p.vorrat_gleich ? ` – ${num(p.vorrat_gleich)} gleiche (Name+Einheit+Ort): Menge wird addiert` : ''}</li>
+    <li>🗄️ <b>${num(p.orte)}</b> Orte${p.orte_gleich ? ` – ${num(p.orte_gleich)} mit gleichem Namen werden zusammengelegt` : ''}</li>
+    <li>📷 ${num(p.bilder_vorrat)} Fotos</li>`);
+  return `<p>Aus <b>${esc(vonTxt)}</b> werden nach <b>${esc(nachTxt)}</b> verschoben (${BEREICH_TXT[bereich]}):</p><ul>${li.join('')}</ul>
+    <p class="muted">Danach ist dieser Bereich bei ${esc(vonTxt)} leer. Das lässt sich nicht rückgängig machen.</p>`;
+}
+const mergeDoneText = r => `Zusammengeführt: ${num((r.teile_neu || 0) + (r.teile_zusammengelegt || 0))} Teile, ${num((r.vorrat_neu || 0) + (r.vorrat_zusammengelegt || 0))} Artikel, ${num((r.dateien || []).length)} Fotos.`;
+
+// Fotos nach dem Zusammenführen in den Ordner des Ziel-Kontos verschieben, dann abschließen.
+async function finishMerge(res) {
+  if (finishMerge.running?.has(res.id)) return; (finishMerge.running ||= new Set()).add(res.id);
+  try {
+    for (const f of res.dateien || []) {
+      const { error } = await sb.storage.from(BUCKET).move(f.von, f.nach);
+      if (error && !/not.?found|exist/i.test(error.message)) console.warn('Foto verschieben:', f.von, error.message);
+    }
+    if ((res.loeschen || []).length) await sb.storage.from(BUCKET).remove(res.loeschen);
+    const { error } = await sb.rpc('zusammenfuehrung_abschliessen', { p_id: res.id });
+    if (error) throw error;
+  } finally { finishMerge.running.delete(res.id); }
+}
+
+// Link zu einer Kiste/einem Ort aus einer geteilten Sammlung (z. B. per NFC/QR) → passende Sammlung öffnen
+async function openForeign(table, id) {
+  const { data } = await sb.from(table).select('user_id').eq('id', Number(id)).maybeSingle();
+  if (!data || data.user_id === owner()) return;
+  if (data.user_id === state.user.id) viewAs(null);
+  else if (shareOf(data.user_id)) viewAsShare(shareOf(data.user_id));
+  else if (state.isAdmin) viewAs(data.user_id, '(anderes Konto)', 'admin');
+  else return;
+  route();
+}
+
+async function viewTeilen(section) {
+  app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt …</div>';
+  await loadSocial();
+  setMode(section === 'vorrat' ? 'v' : 'pm', section === 'vorrat' ? 'v/teilen' : 'teilen');
+  const me = state.user.id, other = section === 'vorrat' ? 'playmobil' : 'vorrat';
+  const sTxt = section === 'vorrat' ? 'Vorratskammer' : 'Playmobil-Sammlung';
+  const invites = state.shares.filter(f => f.member_id === me && f.status === 'eingeladen');
+  const withMe = state.shares.filter(f => f.member_id === me && f.status === 'angenommen' && covers(f.bereich, section));
+  const mine = state.shares.filter(f => f.owner_id === me && covers(f.bereich, section));
+  const mIn = state.merges.filter(z => z.status === 'offen' && z.antragsteller_id !== me && [z.von_id, z.nach_id].includes(me));
+  const mOut = state.merges.filter(z => z.status === 'offen' && z.antragsteller_id === me);
+  const mOld = state.merges.filter(z => !['offen'].includes(z.status)).slice(0, 5);
+  const mText = z => z.von_id === me ? `Deine Daten → <b>${esc(z.nach_email)}</b>` : z.nach_id === me ? `Daten von <b>${esc(z.von_email)}</b> → zu dir` : `${esc(z.von_email)} → ${esc(z.nach_email)}`;
+  const banner = state.viewUid ? `<div class="card" style="background:#fff8e1">Du siehst gerade eine andere Sammlung. Teilen &amp; Zusammenführen betrifft immer <b>deine eigenen</b> Daten.</div>` : '';
+  app.innerHTML = `
+    <h1>👥 Teilen &amp; Zusammenführen</h1>${banner}
+    ${invites.length ? `<h2>📨 Einladungen an dich</h2><div class="list">${invites.map(f => `<div class="card" style="margin:0">
+      <b>${esc(f.owner_email)}</b> möchte ${BEREICH_TXT[f.bereich]} mit dir teilen (${RECHT_TXT[f.recht]}).
+      <div class="row" style="margin-top:.5rem"><button class="btn small" data-a="accept" data-id="${f.id}">✅ Annehmen</button><button class="btn small secondary" data-a="del" data-id="${f.id}">Ablehnen</button></div></div>`).join('')}</div>` : ''}
+    ${mIn.length ? `<h2>🔀 Anfragen zum Zusammenführen</h2><div class="list">${mIn.map(z => `<div class="card" style="margin:0">
+      ${mText(z)} <span class="badge">${BEREICH_TXT[z.bereich]}</span>
+      <div class="row" style="margin-top:.5rem"><button class="btn small" data-a="mprev" data-id="${z.id}">🔎 Vorschau &amp; annehmen</button><button class="btn small secondary" data-a="mno" data-id="${z.id}">Ablehnen</button></div></div>`).join('')}</div>` : ''}
+
+    <h2>Mit mir geteilt</h2>
+    ${withMe.length ? `<div class="list">${withMe.map(f => `<div class="card" style="margin:0">
+      <b>${esc(f.owner_email)}</b> <span class="badge ${f.recht === 'bearbeiten' ? 'green' : 'orange'}">${RECHT_TXT[f.recht]}</span> <span class="badge">${BEREICH_TXT[f.bereich]}</span>
+      <div class="row" style="margin-top:.5rem"><button class="btn small" data-a="view" data-id="${f.id}">👀 Ansehen</button><button class="btn small secondary" data-a="leave" data-id="${f.id}">Verlassen</button></div></div>`).join('')}</div>`
+      : `<p class="muted">Niemand teilt eine ${sTxt} mit dir.</p>`}
+
+    <h2>Meine ${sTxt} teilen</h2>
+    <form class="card" id="invForm">
+      <label>E-Mail der Person (braucht ein eigenes Konto)</label><input name="email" type="email" required placeholder="name@beispiel.de">
+      <div class="grid2"><div><label>Recht</label><select name="recht"><option value="lesen">👁️ nur lesen</option><option value="bearbeiten">✏️ bearbeiten</option></select></div>
+      <div><label>Bereich</label><select name="bereich"><option value="${section}">${BEREICH_TXT[section]}</option><option value="beide">${BEREICH_TXT.beide}</option></select></div></div>
+      <div style="height:.8rem"></div><button class="btn block">📨 Einladen</button>
+    </form>
+    ${mine.length ? `<div class="list">${mine.map(f => `<div class="card" style="margin:0">
+      <b style="overflow-wrap:anywhere">${esc(f.member_email)}</b> ${f.status === 'eingeladen' ? '<span class="badge orange">eingeladen</span>' : '<span class="badge green">hat Zugriff</span>'} <span class="badge">${BEREICH_TXT[f.bereich]}</span>
+      <div class="row" style="margin-top:.5rem"><select data-a="recht" data-id="${f.id}" style="flex:1"><option value="lesen" ${f.recht === 'lesen' ? 'selected' : ''}>👁️ nur lesen</option><option value="bearbeiten" ${f.recht === 'bearbeiten' ? 'selected' : ''}>✏️ bearbeiten</option></select>
+      <button class="btn small danger" data-a="revoke" data-id="${f.id}">Zugriff entziehen</button></div></div>`).join('')}</div>` : `<p class="muted">Du teilst deine ${sTxt} noch mit niemandem.</p>`}
+
+    <h2>🔀 Sammlungen zusammenführen</h2>
+    <form class="card" id="mergeForm">
+      <p class="muted" style="margin-top:0">Legt zwei Konten zu einem zusammen. Das andere Konto muss zustimmen. Gleiche Kisten/Sets/Orte werden zusammengelegt, gleiche Teile/Artikel addiert.</p>
+      <label>E-Mail des anderen Kontos</label><input name="email" type="email" required placeholder="name@beispiel.de">
+      <label>Richtung</label><select name="richtung"><option value="zu_dir">Meine Daten → in das andere Konto</option><option value="zu_mir">Daten des anderen Kontos → zu mir</option></select>
+      <label>Bereich</label><select name="bereich"><option value="${section}">${BEREICH_TXT[section]}</option><option value="beide">${BEREICH_TXT.beide}</option></select>
+      <div style="height:.8rem"></div><button class="btn block secondary">🔀 Anfrage senden</button>
+    </form>
+    ${mOut.length ? `<h3>Gesendete Anfragen</h3><div class="list">${mOut.map(z => `<div class="card" style="margin:0">${mText(z)} <span class="badge">${BEREICH_TXT[z.bereich]}</span> <span class="badge orange">wartet</span>
+      <div class="row" style="margin-top:.5rem"><button class="btn small secondary" data-a="mdel" data-id="${z.id}">Zurückziehen</button></div></div>`).join('')}</div>` : ''}
+    ${mOld.length ? `<h3>Verlauf</h3><div class="list">${mOld.map(z => `<div class="card" style="margin:0;font-size:.9rem">${mText(z)} <span class="badge ${z.status === 'abgelehnt' ? 'red' : 'green'}">${{ abgelehnt: 'abgelehnt', angenommen: 'läuft …', erledigt: 'erledigt' }[z.status]}</span>
+      ${z.status !== 'angenommen' ? `<button class="btn-link" data-a="mdel" data-id="${z.id}">entfernen</button>` : ''}</div>`).join('')}</div>` : ''}`;
+
+  const byId = (list, id) => list.find(x => String(x.id) === String(id));
+  const again = () => { setTimeout(() => viewTeilen(section), 0); };
+  app.querySelectorAll('[data-a]').forEach(el => {
+    const ev = el.tagName === 'SELECT' ? 'onchange' : 'onclick';
+    el[ev] = async () => {
+      const id = Number(el.dataset.id), a = el.dataset.a;
+      try {
+        if (a === 'accept') { const { error } = await sb.rpc('freigabe_annehmen', { p_id: id }); if (error) throw error; toast('Einladung angenommen. Wähle die Sammlung oben aus.', 4000); }
+        else if (a === 'del' || a === 'leave' || a === 'revoke') {
+          if (a !== 'del' && !await confirmDialog(a === 'leave' ? 'Geteilte Sammlung verlassen?' : 'Zugriff entziehen?', a === 'leave' ? 'Du siehst diese Sammlung danach nicht mehr.' : 'Die Person sieht deine Daten danach nicht mehr.', 'Ja', true)) return;
+          const { error } = await sb.from('freigaben').delete().eq('id', id); if (error) throw error;
+          const f = byId(state.shares, id); if (a === 'leave' && f && state.viewUid === f.owner_id) viewAs(null);
+          toast(a === 'revoke' ? 'Zugriff entzogen.' : a === 'leave' ? 'Verlassen.' : 'Abgelehnt.');
+        }
+        else if (a === 'recht') { const f = byId(state.shares, id); const { error } = await sb.rpc('freigabe_aendern', { p_id: id, p_bereich: f.bereich, p_recht: el.value }); if (error) throw error; toast('Recht geändert.'); }
+        else if (a === 'view') { viewAsShare(byId(state.shares, id)); location.hash = section === 'vorrat' ? '#v/liste' : '#teile'; return; }
+        else if (a === 'mno') { const { error } = await sb.rpc('zusammenfuehrung_ablehnen', { p_id: id }); if (error) throw error; toast('Anfrage abgelehnt.'); }
+        else if (a === 'mdel') { const { error } = await sb.from('zusammenfuehrungen').delete().eq('id', id); if (error) throw error; }
+        else if (a === 'mprev') {
+          const z = byId(state.merges, id);
+          const { data: pv, error } = await sb.rpc('zusammenfuehrung_vorschau', { p_id: id }); if (error) throw error;
+          const lbl = u => u === me ? 'deinem Konto' : z.von_id === u ? z.von_email : z.nach_email;
+          if (!await confirmDialog('Zusammenführen?', mergeSummary(pv, z.bereich, lbl(z.von_id), lbl(z.nach_id)), '🔀 Annehmen & zusammenführen')) return;
+          el.disabled = true; toast('Wird zusammengeführt …', 8000);
+          const { data: res, error: e2 } = await sb.rpc('zusammenfuehrung_annehmen', { p_id: id }); if (e2) throw e2;
+          await finishMerge(res); resetView(); toast(mergeDoneText(res), 6000);
+        }
+        again();
+      } catch (e) { fail(e); el.disabled = false; }
+    };
+  });
+  document.getElementById('invForm').onsubmit = async e => {
+    e.preventDefault(); const v = formVals(e.target, ['email', 'recht', 'bereich']);
+    const { data, error } = await sb.rpc('freigabe_einladen', { p_email: v.email, p_bereich: v.bereich, p_recht: v.recht });
+    if (error) return fail(error); toast(data, 5000); again();
+  };
+  document.getElementById('mergeForm').onsubmit = async e => {
+    e.preventDefault(); const v = formVals(e.target, ['email', 'richtung', 'bereich']);
+    const txt = v.richtung === 'zu_dir'
+      ? `Alle deine Daten (${BEREICH_TXT[v.bereich]}) werden in das Konto <b>${esc(v.email)}</b> verschoben. Bei dir ist der Bereich danach leer.`
+      : `Alle Daten (${BEREICH_TXT[v.bereich]}) von <b>${esc(v.email)}</b> werden in dein Konto verschoben.`;
+    if (!await confirmDialog('Anfrage zum Zusammenführen senden?', `<p>${txt}</p><p>Gleiche Kisten-/Set-Nummern und Orte werden zusammengelegt, gleiche Teile (Nr.+Farbe in gleicher Kiste) bzw. Artikel (Name+Einheit+Ort) addiert. Erst wenn das andere Konto zustimmt (mit genauer Vorschau), wird zusammengeführt.</p>`, 'Anfrage senden')) return;
+    const { data, error } = await sb.rpc('zusammenfuehrung_anfragen', { p_email: v.email, p_richtung: v.richtung, p_bereich: v.bereich });
+    if (error) return fail(error); toast(data, 5000); again();
   };
 }
 
