@@ -81,6 +81,10 @@ function viewPlzSettings() {
       <div id="info" style="margin-top:.8rem">${cache ? `<span class="badge green">Ort: ${esc(cache.city)}</span>` : ''}</div>
     </div>
     <div class="card">
+      <h2 style="margin-top:0">Community-Preise</h2>
+      <p class="muted">Beim Tippen auf 🛒 bei einem Artikel werden zusätzlich gemeldete Preise von <a href="https://prices.openfoodfacts.org" target="_blank" rel="noopener">Open Prices</a> in der Nähe geladen (per Barcode oder Name). Kein Konto nötig, <b>nicht garantiert aktuell</b> – getrennt von Prospekt-Links.</p>
+    </div>
+    <div class="card">
       <h2 style="margin-top:0">Märkte in der Nähe</h2>
       <p class="muted">Open-Data-Liste (Name, Adresse, Öffnungszeiten) – keine Preise.</p>
       <button class="btn secondary block" id="maerkte">🏪 Märkte laden</button>
@@ -123,6 +127,83 @@ async function loadMaerkte(el) {
   }
 }
 
+
+const OPEN_PRICES = 'https://prices.openfoodfacts.org/api/v1';
+const proofUrl = proof => {
+  if (!proof) return null;
+  const path = proof.image_thumb_path || proof.file_path;
+  return path ? 'https://prices.openfoodfacts.org/img/' + path : null;
+};
+
+/** Community-Preise (Open Prices) – nur lesen, kein Key. */
+async function fetchOpenPrices(it, cityInfo, radiusKm = 10) {
+  if (!cityInfo?.lat || !cityInfo?.lon) return [];
+  const lat = encodeURIComponent(cityInfo.lat), lon = encodeURIComponent(cityInfo.lon);
+  const ean = String(it.barcode || '').replace(/\D/g, '');
+  let items = [];
+  try {
+    if (ean.length >= 8) {
+      const url = `${OPEN_PRICES}/prices?product_code=${encodeURIComponent(ean)}&lat=${lat}&lon=${lon}&radius_km=${radiusKm}&currency=EUR&size=50&order_by=-date`;
+      const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json(); items = d.items || [];
+    } else {
+      // Ohne EAN: Preise in der Nähe laden und nach Namen filtern (API product_name filtert unzuverlässig)
+      const url = `${OPEN_PRICES}/prices?lat=${lat}&lon=${lon}&radius_km=${radiusKm}&currency=EUR&size=100&order_by=-date`;
+      const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const needle = norm(offerSearchTerm(it));
+      const words = needle.split(/\s+/).filter(w => w.length > 2);
+      items = (d.items || []).filter(p => {
+        const hay = norm([p.product_name, p.product?.product_name, p.product?.brands, p.product_code].join(' '));
+        if (!words.length) return hay.includes(needle);
+        return words.every(w => hay.includes(w)) || hay.includes(needle);
+      });
+    }
+  } catch (e) { console.warn('Open Prices', e); return []; }
+
+  // Gleiches Produkt grob: gleicher Code oder gleicher Name+Packung; neueste zuerst, dann Preis
+  const keyOf = p => {
+    const code = p.product_code || p.product?.code || '';
+    if (code) return 'c:' + code;
+    return 'n:' + norm(p.product?.product_name || p.product_name || '') + '|' + norm(p.product?.quantity || '');
+  };
+  const byKey = new Map();
+  for (const p of items) {
+    const k = keyOf(p);
+    const prev = byKey.get(k);
+    if (!prev || String(p.date || '') > String(prev.date || '') || (p.date === prev.date && Number(p.price) < Number(prev.price))) byKey.set(k, p);
+  }
+  // Unter den „aktuellsten je Produkt“ die 5 günstigsten
+  return [...byKey.values()]
+    .sort((a, b) => Number(a.price) - Number(b.price) || String(b.date || '').localeCompare(String(a.date || '')))
+    .slice(0, 5);
+}
+
+function renderOpenPrices(list) {
+  if (!list.length) return '';
+  const euroP = n => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+  return `<div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid #eee">
+    <h3 style="margin:.2rem 0">💬 Community-Preise (Open Prices)</h3>
+    <p class="muted" style="font-size:.85rem;margin:.2rem 0 .6rem">Von Nutzer:innen gemeldet – <b>nicht garantiert aktuell</b>. Unabhängig von Prospekt-Links. Quelle: <a href="https://prices.openfoodfacts.org" target="_blank" rel="noopener">Open Prices</a>.</p>
+    <div class="list">${list.map(p => {
+      const name = p.product?.product_name || p.product_name || 'Produkt';
+      const pack = [p.product?.quantity, p.product?.brands].filter(Boolean).join(' · ');
+      const loc = p.location || {};
+      const store = loc.osm_brand || loc.osm_name || 'Laden';
+      const addr = [loc.osm_address_postcode, loc.osm_address_city].filter(Boolean).join(' ') || (loc.osm_display_name || '').split(',').slice(0, 2).join(',');
+      const when = p.date ? new Date(p.date + 'T00:00:00').toLocaleDateString('de-DE') : '–';
+      const proof = proofUrl(p.proof);
+      return `<div class="card" style="margin:0 0 .4rem">
+        <div style="display:flex;justify-content:space-between;gap:.5rem;align-items:baseline">
+          <b>${esc(name)}</b><span style="color:#2e7d32;font-weight:700">${euroP(p.price)}</span></div>
+        <div class="sub muted">${pack ? esc(pack) + ' · ' : ''}📍 ${esc(store)}${addr ? ', ' + esc(addr) : ''} · 📅 ${esc(when)}${p.price_is_discounted ? ' · Angebot' : ''}</div>
+        ${proof ? `<a class="btn-link" style="color:var(--blue)" href="${esc(proof)}" target="_blank" rel="noopener">Beleg ansehen</a>` : ''}
+      </div>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+
 /** Dialog: Angebote für einen Vorratsartikel extern öffnen. */
 async function openAngebote(it) {
   let plz = getPlz();
@@ -136,13 +217,21 @@ async function openAngebote(it) {
   try { info = await resolvePlz(plz); } catch (e) { return fail(e); }
   const term = offerSearchTerm(it);
   const links = offerLinks(it, info);
+  // Dialog zuerst mit Ladehinweis, dann Community-Preise nachladen
   const html = `<form><h2 style="margin-top:0">🛒 Angebote in ${esc(info.city)}</h2>
-    <p class="muted">Suche nach „<b>${esc(term)}</b>“. Die Links öffnen externe Prospekt-Seiten – Preise und Gültigkeit bitte dort prüfen. Die App lädt keine Flyer-Daten.</p>
+    <p class="muted">Prospekt-Suche nach „<b>${esc(term)}</b>“ – externe Seiten, keine Flyer-Preise in der App.</p>
     <div class="list">${links.map(l => `<a class="btn block secondary" style="margin:.3rem 0;text-align:left" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)} <small class="muted">↗</small></a>`).join('')}</div>
-    <p class="muted" style="font-size:.85rem">Treffer sind generische Suchen – Produkt und Preis vor Ort prüfen.</p>
+    <p class="muted" style="font-size:.85rem">Generische Suche – Produkt/Preis/Datum auf der Quellseite prüfen.</p>
+    <div id="opBox"><p class="muted">Community-Preise werden geladen …</p></div>
     <div class="row" style="margin-top:1rem"><button type="button" class="btn secondary grow" data-cancel>Schließen</button>
       <a class="btn grow" href="#v/plz" style="text-align:center;background:#2e7d32">PLZ ändern</a></div></form>`;
   const p = dialog(html);
   dialog.current._save = async () => true;
+  const box = dialog.current.querySelector('#opBox');
+  fetchOpenPrices(it, info, 10).then(list => {
+    if (!box.isConnected) return;
+    box.innerHTML = list.length ? renderOpenPrices(list)
+      : `<p class="muted" style="font-size:.85rem;margin-top:.8rem">Keine Community-Preise (Open Prices) in ~10 km gefunden${it.barcode ? ' für diesen Barcode' : ' zum Namen'}. Du kannst einen Preis selbst auf <a href="https://prices.openfoodfacts.org" target="_blank" rel="noopener">prices.openfoodfacts.org</a> melden.</p>`;
+  }).catch(() => { if (box.isConnected) box.innerHTML = ''; });
   return p;
 }
