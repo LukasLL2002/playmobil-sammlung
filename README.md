@@ -25,5 +25,4 @@ Statische Seite (HTML/CSS/JS) mit Supabase als Backend. Im Code steht nur der ö
 - **Mehrere MHDs (Chargen)** pro Vorratsartikel (`vorrat_chargen`); Gesamtmengen/frühestes MHD bleiben auf `vorrat` synchron; ± wählt bei mehreren Chargen aus.
 - **LEGO**: eigener Bereich (Kisten/Sets/Teile), Import/Export; optionale Rebrickable-Set-Suche mit **eigenem** API-Key (nur lokal gespeichert).
 - **Eigene Bereiche**: ＋ in der Modebar → Name/Icon/Farbe/Vorlage, konfigurierbare Felder, Orte, Import, Teilen (`c:<uuid>`).
-- **Angebote**: PLZ nur lokal; Ort via Nominatim; Deep-Links zu MeinProspekt/kaufDA/Marktguru (keine Flyer-Preise in der App); optional Märkte-Open-Data.
-- **Community-Preise**: Open Prices (Barcode/Name + PLZ-Koordinaten), max. 5 günstigste, klar als nicht garantiert aktuell gekennzeichnet.
+- **Angebote**: PLZ nur lokal; Ort via Nominatim; Deep-Links „Angebote beim Anbieter ansehen“ (MeinProspekt/kaufDA/Marktguru). Die App zeigt und importiert **keine** Preise – aktuell nur auf der Anbieter-Seite. Optional Märkte-Open-Data (ohne Preise).
