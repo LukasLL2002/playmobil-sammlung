@@ -386,3 +386,7 @@ grant usage, select on all sequences in schema public to authenticated;
 
 -- Nachgezogen: search_path + Indizes
 -- (bereits auf der DB ausgeführt)
+
+-- Anon-Rechte entziehen (Default-Privileges hatten ALL an anon vergeben)
+revoke all on table public.vorrat_chargen, public.lego_kisten, public.lego_sets, public.lego_teile, public.lego_teil_sets,
+  public.custom_bereiche, public.custom_felder, public.custom_orte, public.custom_eintraege from anon, public;
