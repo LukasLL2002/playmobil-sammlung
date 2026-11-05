@@ -80,13 +80,14 @@ async function checkAdmin() {
   const { data, error } = await sb.rpc('is_admin');
   state.isAdmin = !error && data === true;
   await loadSocial();
+  try { if (typeof loadCustom === 'function') { await loadCustom(); refreshModebarCustom(); } } catch (e) { console.warn(e); }
   const va = JSON.parse(sessionStorage.getItem('viewAs') || 'null');
   if (va && va.id !== state.user.id) {
     if (va.kind === 'admin' && state.isAdmin) Object.assign(state, { viewUid: va.id, viewEmail: va.email, viewKind: 'admin', viewRecht: 'bearbeiten', viewBereich: 'beide' });
     else { const sh = shareOf(va.id); if (sh) viewAsShare(sh); }
   }
 }
-function resetView() { state.loaded = false; vstate.loaded = false; state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; }
+function resetView() { state.loaded = false; vstate.loaded = false; if (typeof lstate !== 'undefined') { lstate.loaded = false; lstate.kisten = []; lstate.sets = []; lstate.teile = []; } if (typeof cstate !== 'undefined') { cstate.loaded = false; cstate.bereiche = []; cstate.felder = []; cstate.orte = []; cstate.eintraege = []; } state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; vstate.chargen = {}; }
 // kind: 'admin' (Admin sieht fremde Daten) oder 'share' (mit mir geteilte Sammlung)
 function viewAs(id, email, kind = 'admin', recht = 'bearbeiten', bereich = 'beide') {
   if (id && id !== state.user.id) {
@@ -98,7 +99,7 @@ function viewAs(id, email, kind = 'admin', recht = 'bearbeiten', bereich = 'beid
   }
   resetView();
 }
-const covers = (bereich, section) => bereich === 'beide' || bereich === section;
+const covers = (bereich, section) => bereich === section || bereich === 'alle' || (bereich === 'beide' && (section === 'playmobil' || section === 'vorrat')) || (section && section.startsWith('c:') && (bereich === section || bereich === 'alle'));
 const shareOf = ownerId => state.shares.find(f => f.owner_id === ownerId && f.member_id === state.user.id && f.status === 'angenommen');
 const viewAsShare = f => viewAs(f.owner_id, f.owner_email, 'share', f.recht, f.bereich);
 const sharesFor = section => state.shares.filter(f => f.member_id === state.user.id && f.status === 'angenommen' && covers(f.bereich, section));
@@ -116,7 +117,7 @@ async function loadSocial() {
 function renderChrome(mode) {
   const w = document.getElementById('who'); w.textContent = state.user?.email || ''; w.title = 'Angemeldet als ' + w.textContent;
   document.querySelector('#modebar a[data-mode="admin"]').classList.toggle('hidden', !state.isAdmin);
-  const section = mode === 'v' ? 'vorrat' : 'playmobil';
+  const section = mode === 'v' ? 'vorrat' : mode === 'lego' ? 'lego' : String(mode).startsWith('c') ? 'c:' + String(mode).slice(1) : 'playmobil';
   const ban = document.getElementById('adminBanner');
   const ro = state.viewKind === 'share' && state.viewRecht !== 'bearbeiten';
   document.body.classList.toggle('readonly', ro && mode !== 'admin');
@@ -188,12 +189,16 @@ function renderLogin() {
 const TABS = {
   pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['sets', '🏰', 'Sets'], ['uebersicht', '📊', 'Übersicht'], ['teilen', '👥', 'Teilen']],
   v: [['v/liste', '🔍', 'Vorrat'], ['v/orte', '🗄️', 'Orte'], ['v/einkauf', '🛒', 'Einkauf'], ['v/uebersicht', '📊', 'Übersicht'], ['v/teilen', '👥', 'Teilen']],
+  lego: [['l/teile', '🔍', 'Teile'], ['l/kisten', '📦', 'Kisten'], ['l/sets', '🏰', 'Sets'], ['l/uebersicht', '📊', 'Übersicht'], ['l/teilen', '👥', 'Teilen']],
 };
 function setMode(mode, tab) {
   document.body.classList.toggle('mode-v', mode === 'v');
-  localStorage.setItem('modus', mode);
-  document.getElementById('brand').textContent = mode === 'v' ? '🥫 Vorratskammer' : '🧸 Playmobil-Sammlung';
-  document.getElementById('brand').href = mode === 'v' ? '#v/liste' : '#teile';
+  document.body.classList.toggle('mode-lego', mode === 'lego');
+  document.body.classList.toggle('mode-c', String(mode).startsWith('c'));
+  if (!String(mode).startsWith('c')) localStorage.setItem('modus', mode);
+  if (mode === 'v') { document.getElementById('brand').textContent = '🥫 Vorratskammer'; document.getElementById('brand').href = '#v/liste'; }
+  else if (mode === 'lego') { document.getElementById('brand').textContent = '🧱 LEGO'; document.getElementById('brand').href = '#l/teile'; }
+  else if (!String(mode).startsWith('c')) { document.getElementById('brand').textContent = '🧸 Playmobil-Sammlung'; document.getElementById('brand').href = '#teile'; }
   document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
   const nav = document.getElementById('tabbar');
   const pend = pendingCount();
@@ -208,12 +213,16 @@ async function route() {
   window.scrollTo(0, 0);
   // Geteilte Sammlung deckt diesen Bereich nicht ab (oder Freigabe entzogen) → zurück zu „Meine“
   if (state.viewKind === 'share') {
-    const f = shareOf(state.viewUid), section = parts[0] === 'v' ? 'vorrat' : 'playmobil';
-    if (!f || (parts[0] !== 'admin' && !covers(f.bereich, section))) viewAs(null);
+    const f = shareOf(state.viewUid);
+    const section = parts[0] === 'v' ? 'vorrat' : parts[0] === 'l' ? 'lego' : parts[0] === 'c' ? 'c:' + parts[1] : 'playmobil';
+    if (!f || (parts[0] !== 'admin' && parts[0] !== 'bereiche' && !covers(f.bereich, section))) viewAs(null);
     else if (f.recht !== state.viewRecht || f.bereich !== state.viewBereich) Object.assign(state, { viewRecht: f.recht, viewBereich: f.bereich });
   }
   if (parts[0] === 'v') return routeVorrat(parts[1] || 'liste', parts[2]);
+  if (parts[0] === 'l') return routeLego(parts[1] || 'teile', parts[2]);
+  if (parts[0] === 'c' || parts[0] === 'bereiche') return routeCustom(parts);
   if (parts[0] === 'admin') return viewAdmin();
+  if (parts[0] === 'import' && parts[1] === 'playmobil') return viewImport('playmobil');
   if (!state.loaded) {
     setMode('pm', '');
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Sammlung …</div>';
@@ -222,7 +231,7 @@ async function route() {
   const [view, id] = parts;
   const tab = { teil: 'teile', kiste: 'kisten', set: 'sets', etiketten: 'kisten' }[view] || view;
   setMode('pm', tab);
-  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil') };
+  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil'), import: () => viewImport('playmobil') };
   (views[view] || viewTeile)(id);
 }
 window.addEventListener('hashchange', route);
@@ -596,9 +605,10 @@ function viewStats() {
       <div class="stat"><b>${num(ohneKiste)}</b>Teile ohne Kiste</div>
     </div>
     ${topK.length ? `<h2>Wertvollste Kisten</h2><div class="list">${topK.map(x => `<a class="item" href="#kiste/${x.k.id}"><div class="thumb">📦</div><div class="info"><div class="title">${esc(kisteLabel(x.k))}</div><div class="sub">${num(x.stueck)} Stück</div></div><div class="right">${euro(x.wert)}</div></a>`).join('')}</div>` : ''}
-    <h2>Export</h2>
-    <div class="card"><p style="margin-top:0">Alle Teile als Tabelle (CSV, öffnet in Excel / Numbers / LibreOffice).</p>
-    <button class="btn block" id="csv">⬇️ CSV herunterladen</button></div>
+    <h2>Import &amp; Export</h2>
+    <div class="card"><a class="btn block secondary" href="#import">📥 Excel/CSV importieren</a>
+      <div style="height:.5rem"></div>
+      <button class="btn block" id="csv">⬇️ CSV herunterladen</button></div>
     <p class="muted center" style="font-size:.85rem">Angemeldet als ${esc(state.user.email)}</p>`;
   document.getElementById('csv').onclick = exportCsv;
 }
@@ -624,7 +634,7 @@ function viewPasswort() {
 // =====================================================================
 // ---------- Bereich: Vorratskammer ----------
 // =====================================================================
-const vstate = { loaded: false, orte: [], items: [], filter: { q: '', kat: '', ort: '', nur: '' } };
+const vstate = { loaded: false, orte: [], items: [], chargen: {}, filter: { q: '', kat: '', ort: '', nur: '' } };
 const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Haushalt', 'Sonstiges'];
 const EINHEITEN = ['Stück', 'Packung', 'Dose', 'Glas', 'Flasche', 'kg', 'g', 'l', 'ml'];
 const ortById = id => vstate.orte.find(o => o.id === Number(id));
@@ -639,10 +649,17 @@ const mhdText = it => { const d = mhdDays(it); if (d == null) return ''; const d
 const vsort = (a, b) => a.name.localeCompare(b.name, 'de');
 
 async function loadVorrat() {
-  const [o, v] = await Promise.all([sb.from('vorrat_orte').select('*').eq('user_id', owner()), sb.from('vorrat').select('*').eq('user_id', owner())]);
-  for (const r of [o, v]) if (r.error) throw r.error;
+  const [o, v, c] = await Promise.all([
+    sb.from('vorrat_orte').select('*').eq('user_id', owner()),
+    sb.from('vorrat').select('*').eq('user_id', owner()),
+    sb.from('vorrat_chargen').select('*').eq('user_id', owner()),
+  ]);
+  for (const r of [o, v, c]) if (r.error) throw r.error;
   vstate.orte = o.data.sort((a, b) => sortNat(a.name, b.name));
   vstate.items = v.data.sort(vsort);
+  vstate.chargen = {};
+  for (const ch of c.data) (vstate.chargen[ch.vorrat_id] ||= []).push(ch);
+  for (const id of Object.keys(vstate.chargen)) vstate.chargen[id].sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')));
   vstate.loaded = true;
   await loadImageUrls(vstate.items);
 }
@@ -654,7 +671,7 @@ async function routeVorrat(view, id) {
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Vorrat …</div>';
     try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
-  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat') };
+  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings };
   (views[view] || vListe)(id);
 }
 
@@ -672,27 +689,63 @@ function vMatches(it, f) {
 function vItem(it) {
   const o = ortById(it.ort_id);
   const cls = mhdState(it) || (isLow(it) ? 'warn' : '');
+  const lots = vstate.chargen[it.id] || [];
+  const lotHint = lots.length > 1 ? `<span class="badge">${lots.length} Chargen</span>` : '';
   return `<div class="vitem ${cls}" data-id="${it.id}">
     <a class="info" href="#v/artikel/${it.id}" style="display:flex;gap:.6rem;align-items:center">${imgUrl(it) ? thumb(it) : '<div class="thumb">🥫</div>'}
       <div style="min-width:0;flex:1"><div class="title">${esc(it.name)}</div>
       <div class="sub">${esc(it.kategorie || '')}${o ? ' · 📍 ' + esc(o.name) : ''}</div>
-      <div>${mhdText(it)}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div></div></a>
+      <div>${mhdText(it)}${lotHint}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div></div></a>
     <div class="qty"><button type="button" data-d="-1" aria-label="weniger">−</button>
       <div class="n">${dec(it.menge)}<small>${esc(it.einheit || '')}</small></div>
-      <button type="button" data-d="1" aria-label="mehr">+</button></div></div>`;
+      <button type="button" data-d="1" aria-label="mehr">+</button>
+      <button type="button" class="offerbtn" data-offer title="Angebote">🛒</button></div></div>`;
 }
 
-// +1 / −1 direkt in der Liste
+// +1 / −1 direkt in der Liste – bei mehreren Chargen Charge wählen
+async function pickCharge(it, delta) {
+  const lots = [...(vstate.chargen[it.id] || [])];
+  if (!lots.length) {
+    const { data, error } = await sb.from('vorrat_chargen').insert({ vorrat_id: it.id, user_id: owner(), menge: Math.max(0, Number(it.menge) + delta), mhd: it.mhd, ort_id: it.ort_id }).select().single();
+    if (error) throw error; (vstate.chargen[it.id] ||= []).push(data); return data;
+  }
+  if (lots.length === 1) return lots[0];
+  // Dialog
+  return new Promise(resolve => {
+    const sorted = delta < 0 ? lots.filter(l => l.menge > 0).sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999'))) : lots;
+    if (!sorted.length) return resolve(lots[0]);
+    if (sorted.length === 1) return resolve(sorted[0]);
+    const d = document.createElement('dialog');
+    d.innerHTML = `<form><h2 style="margin-top:0">Welche Charge?</h2>
+      <p class="muted">${delta < 0 ? 'Entnehmen aus:' : 'Hinzufügen zu:'}</p>
+      ${sorted.map(l => `<button type="button" class="btn block secondary" data-id="${l.id}" style="margin:.3rem 0;text-align:left">
+        ${dec(l.menge)} ${esc(it.einheit || '')}${l.mhd ? ' · MHD ' + new Date(l.mhd + 'T00:00:00').toLocaleDateString('de-DE') : ' · ohne MHD'}${l.notiz ? ' · ' + esc(l.notiz) : ''}
+      </button>`).join('')}
+      <button type="button" class="btn secondary block" data-cancel style="margin-top:.6rem">Abbrechen</button></form>`;
+    document.body.appendChild(d); d.showModal();
+    d.querySelector('[data-cancel]').onclick = () => { d.close(); d.remove(); resolve(null); };
+    d.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { const l = lots.find(x => x.id === Number(b.dataset.id)); d.close(); d.remove(); resolve(l); });
+  });
+}
 function bindQty(container, rerender) {
   container.onclick = async e => {
+    const ob = e.target.closest('button[data-offer]');
+    if (ob) { const id = Number(ob.closest('.vitem').dataset.id); const it = vstate.items.find(x => x.id === id); return openAngebote(it); }
     const b = e.target.closest('button[data-d]'); if (!b) return;
     const id = Number(b.closest('.vitem').dataset.id);
     const it = vstate.items.find(x => x.id === id);
-    const neu = Math.max(0, Number(it.menge) + Number(b.dataset.d));
-    if (neu === Number(it.menge)) return;
-    const alt = it.menge; it.menge = neu; rerender();
-    const { error } = await sb.from('vorrat').update({ menge: neu }).eq('id', id);
-    if (error) { it.menge = alt; rerender(); fail(error); }
+    const delta = Number(b.dataset.d);
+    try {
+      const lot = await pickCharge(it, delta); if (!lot) return;
+      const neu = Math.max(0, Number(lot.menge) + delta);
+      const { data, error } = await sb.from('vorrat_chargen').update({ menge: neu }).eq('id', lot.id).select().single();
+      if (error) throw error;
+      Object.assign(lot, data);
+      // Parent-Menge/MHD per Trigger – neu laden für diesen Artikel
+      const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single();
+      if (fresh) Object.assign(it, fresh);
+      rerender();
+    } catch (err) { fail(err); }
   };
 }
 
@@ -774,13 +827,16 @@ function vForm(id) {
       <datalist id="katliste">${kats.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
       <datalist id="einliste">${EINHEITEN.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
       <div class="grid2">
-        <div><label for="menge">Menge</label><input id="menge" inputmode="decimal" value="${decIn(it.menge)}"></div>
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
-      </div>
-      <div class="grid2">
-        <div><label for="mhd">MHD (haltbar bis)</label><input id="mhd" type="date" value="${esc(it.mhd || '')}"></div>
         <div><label for="preis">Preis (€ pro Einheit)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"></div>
       </div>
+      ${isNew ? `<div class="grid2"><div><label for="menge">Menge (erste Charge)</label><input id="menge" inputmode="decimal" value="${decIn(it.menge)}"></div>
+        <div><label for="mhd">MHD</label><input id="mhd" type="date" value="${esc(it.mhd || '')}"></div></div>`
+        : `<div id="chargenBox"><label>Chargen / MHD <span class="muted">(Gesamt: ${dec(it.menge)})</span></label>
+        <div id="chargenList" class="list"></div>
+        <button type="button" class="btn small secondary" id="addCharge">＋ Charge / MHD</button></div>
+        <p><button type="button" class="btn small secondary" id="btnOffer">🛒 Angebote in der Nähe</button>
+        <a class="btn small secondary" href="#v/plz">📍 PLZ</a></p>`}
       <label for="ort">Ort</label>
       <div class="row"><select id="ort" style="flex:1"></select><button type="button" class="btn small secondary" id="newOrt">＋ Neu</button></div>
       <label for="bc">Barcode (optional)</label>
@@ -804,6 +860,40 @@ function vForm(id) {
   if (scan) document.getElementById('scanBc').onclick = async () => { const c = await scanBarcode(); if (c) document.getElementById('bc').value = c; };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
+  function renderChargen() {
+    const box = document.getElementById('chargenList'); if (!box) return;
+    const lots = vstate.chargen[it.id] || [];
+    box.innerHTML = lots.map(l => `<div class="card" style="margin:0" data-cid="${l.id}">
+      <div class="grid2"><div><label>Menge</label><input data-f="menge" inputmode="decimal" value="${decIn(l.menge)}"></div>
+        <div><label>MHD</label><input data-f="mhd" type="date" value="${esc(l.mhd || '')}"></div></div>
+      <label>Notiz</label><input data-f="notiz" value="${esc(l.notiz || '')}">
+      <div class="row" style="margin-top:.4rem"><button type="button" class="btn small secondary" data-save-c>💾</button>
+        <button type="button" class="btn small danger" data-del-c>🗑️</button></div></div>`).join('') || '<p class="muted">Keine Chargen – mit „＋ Charge“ anlegen.</p>';
+    box.querySelectorAll('[data-save-c]').forEach(btn => btn.onclick = async () => {
+      const card = btn.closest('[data-cid]'); const cid = Number(card.dataset.cid);
+      const row = { menge: Math.max(0, parseDec(card.querySelector('[data-f=menge]').value) ?? 0), mhd: card.querySelector('[data-f=mhd]').value || null, notiz: card.querySelector('[data-f=notiz]').value.trim() || null };
+      const { data, error } = await sb.from('vorrat_chargen').update(row).eq('id', cid).select().single();
+      if (error) return fail(error);
+      const arr = vstate.chargen[it.id]; const i = arr.findIndex(x => x.id === cid); arr[i] = data;
+      const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
+      toast('Charge gespeichert.'); renderChargen();
+    });
+    box.querySelectorAll('[data-del-c]').forEach(btn => btn.onclick = async () => {
+      if (!confirm('Charge löschen?')) return;
+      const cid = Number(btn.closest('[data-cid]').dataset.cid);
+      const { error } = await sb.from('vorrat_chargen').delete().eq('id', cid); if (error) return fail(error);
+      vstate.chargen[it.id] = (vstate.chargen[it.id] || []).filter(x => x.id !== cid);
+      const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
+      renderChargen();
+    });
+  }
+  renderChargen();
+  const ac = document.getElementById('addCharge');
+  if (ac) ac.onclick = async () => {
+    const { data, error } = await sb.from('vorrat_chargen').insert({ vorrat_id: it.id, user_id: owner(), menge: 0, mhd: null, ort_id: it.ort_id }).select().single();
+    if (error) return fail(error); (vstate.chargen[it.id] ||= []).push(data); renderChargen();
+  };
   const del = document.getElementById('del');
   if (del) del.onclick = async () => {
     if (!confirm('Diesen Artikel löschen?')) return;
@@ -818,14 +908,16 @@ function vForm(id) {
         name: document.getElementById('name').value.trim(),
         kategorie: document.getElementById('kat').value.trim() || null,
         einheit: document.getElementById('ein').value.trim() || null,
-        menge: Math.max(0, parseDec(document.getElementById('menge').value) ?? 0),
         mindestbestand: parseDec(document.getElementById('min').value),
-        mhd: document.getElementById('mhd').value || null,
         preis: parseDec(document.getElementById('preis').value),
         ort_id: oSel.value ? Number(oSel.value) : null,
         barcode: document.getElementById('bc').value.trim() || null,
         notiz: document.getElementById('notiz').value.trim() || null,
       };
+      if (isNew) {
+        row.menge = Math.max(0, parseDec(document.getElementById('menge').value) ?? 0);
+        row.mhd = document.getElementById('mhd').value || null;
+      }
       if (!row.name) throw new Error('Bitte einen Namen eingeben.');
       const oldPath = it.bild_url;
       if (file) {
@@ -841,6 +933,10 @@ function vForm(id) {
       if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
       await loadImageUrls([r.data]);
       vstate.items = (isNew ? [...vstate.items, r.data] : vstate.items.map(x => x.id === r.data.id ? r.data : x)).sort(vsort);
+      if (isNew) {
+        const { data: ch } = await sb.from('vorrat_chargen').select('*').eq('vorrat_id', r.data.id);
+        if (ch) vstate.chargen[r.data.id] = ch;
+      }
       toast('Gespeichert ✔');
       if (more) { const q = new URLSearchParams(); if (row.ort_id) q.set('ort', row.ort_id); if (row.kategorie) q.set('kat', row.kategorie); if (row.einheit) q.set('einheit', row.einheit); q.set('t', Date.now()); location.hash = '#v/artikel/neu?' + q; }
       else location.hash = '#v/liste';
@@ -954,19 +1050,28 @@ function vStats() {
       <div class="stat"><b>${num(vstate.orte.length)}</b>Orte</div>
     </div>
     ${soon.length ? `<h2>Bald verbrauchen</h2><div id="list" class="list">${soon.map(vItem).join('')}</div>` : ''}
-    <h2>Export</h2>
-    <div class="card"><p style="margin-top:0">Gesamten Vorrat als Tabelle (CSV für Excel/Numbers).</p><button class="btn block" id="csv">⬇️ CSV herunterladen</button></div>`;
+    <h2>Import, Export &amp; Angebote</h2>
+    <div class="card">
+      <a class="btn block secondary" href="#v/import">📥 Excel/CSV importieren</a>
+      <div style="height:.5rem"></div>
+      <button class="btn block" id="csv">⬇️ CSV herunterladen</button>
+      <div style="height:.5rem"></div>
+      <a class="btn block secondary" href="#v/plz">📍 PLZ &amp; Märkte in der Nähe</a>
+    </div>`;
   const l = document.getElementById('list'); if (l) bindQty(l, () => route());
   document.getElementById('csv').onclick = vExportCsv;
 }
 
 function vExportCsv() {
-  const head = ['Name', 'Kategorie', 'Menge', 'Einheit', 'Mindestbestand', 'MHD', 'Preis', 'Wert gesamt', 'Ort', 'Barcode', 'Notiz', 'Status'];
+  const head = ['Name', 'Kategorie', 'Menge', 'Einheit', 'Mindestbestand', 'MHD', 'Chargen_MHDs', 'Preis', 'Wert gesamt', 'Ort', 'Barcode', 'Notiz', 'Status'];
   const cell = v => { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const d = n => n == null ? '' : String(n).replace('.', ',');
-  const rows = vstate.items.map(i => [i.name, i.kategorie, d(i.menge), i.einheit, d(i.mindestbestand), i.mhd ? new Date(i.mhd + 'T00:00:00').toLocaleDateString('de-DE') : '', d(i.preis),
+  const rows = vstate.items.map(i => {
+    const lots = (vstate.chargen[i.id] || []).map(c => `${d(c.menge)}${c.mhd ? '@' + new Date(c.mhd + 'T00:00:00').toLocaleDateString('de-DE') : ''}`).join(' | ');
+    return [i.name, i.kategorie, d(i.menge), i.einheit, d(i.mindestbestand), i.mhd ? new Date(i.mhd + 'T00:00:00').toLocaleDateString('de-DE') : '', lots, d(i.preis),
     i.preis != null ? d((Number(i.preis) * Number(i.menge)).toFixed(2)) : '', ortById(i.ort_id)?.name, i.barcode, i.notiz,
-    [mhdState(i) === 'bad' ? 'abgelaufen' : mhdState(i) === 'warn' ? 'MHD bald' : '', isLow(i) ? 'nachkaufen' : ''].filter(Boolean).join(', ')]);
+    [mhdState(i) === 'bad' ? 'abgelaufen' : mhdState(i) === 'warn' ? 'MHD bald' : '', isLow(i) ? 'nachkaufen' : ''].filter(Boolean).join(', ')];
+  });
   const csv = '\ufeff' + [head, ...rows].map(r => r.map(cell).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -979,7 +1084,7 @@ function vExportCsv() {
 // =====================================================================
 async function removeUserFiles(uid) {
   const all = [];
-  for (const dir of [uid, `${uid}/teile`, `${uid}/vorrat`]) {
+  for (const dir of [uid, `${uid}/teile`, `${uid}/vorrat`, `${uid}/lego`, `${uid}/custom`]) {
     let offset = 0;
     for (;;) {
       const { data, error } = await sb.storage.from(BUCKET).list(dir, { limit: 1000, offset });
@@ -1011,18 +1116,20 @@ async function viewAdmin() {
     <div class="list">${users.map(u => `<div class="card" style="margin:0">
       <div style="font-weight:700;overflow-wrap:anywhere">${esc(u.email || u.id)} ${u.is_admin ? '<span class="badge">Admin</span>' : ''}${u.id === state.user.id ? '<span class="badge green">du</span>' : ''}</div>
       <div class="sub muted" style="font-size:.85rem">Registriert ${new Date(u.created_at).toLocaleDateString('de-DE')}${u.last_sign_in_at ? ' · zuletzt angemeldet ' + new Date(u.last_sign_in_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
-      <p style="margin:.4rem 0"><span class="badge">🧸 ${num(u.teile)} Teile · ${num(u.kisten)} Kisten · ${num(u.sets)} Sets</span><span class="badge green">🥫 ${num(u.vorrat)} Artikel · ${num(u.vorrat_orte)} Orte</span></p>
+      <p style="margin:.4rem 0"><span class="badge">🧸 ${num(u.teile)} Teile · ${num(u.kisten)} Kisten · ${num(u.sets)} Sets</span><span class="badge green">🥫 ${num(u.vorrat)} Artikel · ${num(u.vorrat_orte)} Orte</span>
+        <span class="badge" style="background:#fff8e1;color:#f57f17">🧱 ${num(u.lego_teile||0)} LEGO · ${num(u.custom_bereiche||0)} eigene</span></p>
       <div class="row">
-        <button class="btn small" data-act="pm" data-id="${u.id}">🧸 Playmobil ansehen</button>
-        <button class="btn small" data-act="v" data-id="${u.id}" style="background:#2e7d32">🥫 Vorrat ansehen</button>
-        <button class="btn small danger" data-act="reset" data-id="${u.id}">♻️ Daten zurücksetzen</button>
+        <button class="btn small" data-act="pm" data-id="${u.id}">🧸 Playmobil</button>
+        <button class="btn small" data-act="v" data-id="${u.id}" style="background:#2e7d32">🥫 Vorrat</button>
+        <button class="btn small" data-act="lego" data-id="${u.id}" style="background:#f9a825;color:#111">🧱 LEGO</button>
+        <button class="btn small danger" data-act="reset" data-id="${u.id}">♻️ Reset</button>
       </div></div>`).join('')}</div>
     <h2>Konten zusammenführen</h2>
     <div class="card">
       <p class="muted" style="margin-top:0">Verschiebt die Daten eines Kontos in ein anderes (ohne Zustimmung der Nutzer). Gleiche Kisten/Sets/Orte und gleiche Teile/Artikel werden zusammengelegt.</p>
       <div class="grid2"><div><label>Von (Quelle)</label><select id="mVon">${users.map(u => `<option value="${u.id}">${esc(u.email)}</option>`).join('')}</select></div>
       <div><label>Nach (Ziel)</label><select id="mNach">${users.map((u, i) => `<option value="${u.id}" ${i === 1 ? 'selected' : ''}>${esc(u.email)}</option>`).join('')}</select></div></div>
-      <label>Bereich</label><select id="mBer"><option value="beide">Playmobil + Vorratskammer</option><option value="playmobil">Nur Playmobil</option><option value="vorrat">Nur Vorratskammer</option></select>
+      <label>Bereich</label><select id="mBer"><option value="alle">Alles (Playmobil+Vorrat+LEGO)</option><option value="beide">Playmobil + Vorrat</option><option value="playmobil">Nur Playmobil</option><option value="vorrat">Nur Vorrat</option><option value="lego">Nur LEGO</option></select>
       <div style="height:.8rem"></div><button class="btn block" id="mGo">🔀 Vorschau &amp; zusammenführen</button>
     </div>
     <h2>Gefahrenzone</h2>
@@ -1039,7 +1146,7 @@ async function viewAdmin() {
       return;
     }
     viewAs(u.id, u.email, 'admin');
-    location.hash = b.dataset.act === 'v' ? '#v/liste' : '#teile';
+    location.hash = b.dataset.act === 'v' ? '#v/liste' : b.dataset.act === 'lego' ? '#l/teile' : '#teile';
   });
   document.getElementById('mGo').onclick = async () => {
     const von = users.find(u => u.id === document.getElementById('mVon').value), nach = users.find(u => u.id === document.getElementById('mNach').value);
@@ -1065,7 +1172,7 @@ async function viewAdmin() {
 // =====================================================================
 // ---------- Teilen & Zusammenführen ----------
 // =====================================================================
-const BEREICH_TXT = { playmobil: '🧸 Playmobil', vorrat: '🥫 Vorratskammer', beide: '🧸+🥫 beide Bereiche' };
+const BEREICH_TXT = { playmobil: '🧸 Playmobil', vorrat: '🥫 Vorratskammer', lego: '🧱 LEGO', beide: '🧸+🥫 Playmobil+Vorrat', alle: '📦 alle Bereiche' };
 const RECHT_TXT = { lesen: '👁️ nur lesen', bearbeiten: '✏️ bearbeiten' };
 
 function confirmDialog(title, html, ok = 'OK', danger = false) {
@@ -1083,7 +1190,8 @@ function mergeSummary(p, bereich, vonTxt, nachTxt) {
   if (covers(bereich, 'vorrat')) li.push(`<li>🥫 <b>${num(p.vorrat)}</b> Artikel${p.vorrat_gleich ? ` – ${num(p.vorrat_gleich)} gleiche (Name+Einheit+Ort): Menge wird addiert` : ''}</li>
     <li>🗄️ <b>${num(p.orte)}</b> Orte${p.orte_gleich ? ` – ${num(p.orte_gleich)} mit gleichem Namen werden zusammengelegt` : ''}</li>
     <li>📷 ${num(p.bilder_vorrat)} Fotos</li>`);
-  return `<p>Aus <b>${esc(vonTxt)}</b> werden nach <b>${esc(nachTxt)}</b> verschoben (${BEREICH_TXT[bereich]}):</p><ul>${li.join('')}</ul>
+  if (bereich === 'lego' || bereich === 'alle') li.push(`<li>🧱 LEGO-Daten werden mitverschoben (Kisten/Sets/Teile zusammengelegt analog Playmobil)</li>`);
+  return `<p>Aus <b>${esc(vonTxt)}</b> werden nach <b>${esc(nachTxt)}</b> verschoben (${BEREICH_TXT[bereich] || esc(bereich)}):</p><ul>${li.join('')}</ul>
     <p class="muted">Danach ist dieser Bereich bei ${esc(vonTxt)} leer. Das lässt sich nicht rückgängig machen.</p>`;
 }
 const mergeDoneText = r => `Zusammengeführt: ${num((r.teile_neu || 0) + (r.teile_zusammengelegt || 0))} Teile, ${num((r.vorrat_neu || 0) + (r.vorrat_zusammengelegt || 0))} Artikel, ${num((r.dateien || []).length)} Fotos.`;
@@ -1116,9 +1224,17 @@ async function openForeign(table, id) {
 async function viewTeilen(section) {
   app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt …</div>';
   await loadSocial();
-  setMode(section === 'vorrat' ? 'v' : 'pm', section === 'vorrat' ? 'v/teilen' : 'teilen');
-  const me = state.user.id, other = section === 'vorrat' ? 'playmobil' : 'vorrat';
-  const sTxt = section === 'vorrat' ? 'Vorratskammer' : 'Playmobil-Sammlung';
+  const modeFor = section === 'vorrat' ? 'v' : section === 'lego' ? 'lego' : section.startsWith('c:') ? 'c' + section.slice(2) : 'pm';
+  const tabFor = section === 'vorrat' ? 'v/teilen' : section === 'lego' ? 'l/teilen' : section.startsWith('c:') ? 'c/' + section.slice(2) + '/teilen' : 'teilen';
+  setMode(modeFor, tabFor);
+  const me = state.user.id;
+  const sTxt = section === 'vorrat' ? 'Vorratskammer' : section === 'lego' ? 'LEGO-Sammlung' : section.startsWith('c:') ? ((cstate.bereiche || []).find(b => b.id === section.slice(2))?.name || 'Eigener Bereich') : 'Playmobil-Sammlung';
+  const bereichOpts = section.startsWith('c:')
+    ? `<option value="${section}">${esc(sTxt)}</option><option value="alle">${BEREICH_TXT.alle}</option>`
+    : `<option value="${section}">${BEREICH_TXT[section] || esc(section)}</option>
+       <option value="beide">${BEREICH_TXT.beide}</option>
+       <option value="lego">${BEREICH_TXT.lego}</option>
+       <option value="alle">${BEREICH_TXT.alle}</option>`;
   const invites = state.shares.filter(f => f.member_id === me && f.status === 'eingeladen');
   const withMe = state.shares.filter(f => f.member_id === me && f.status === 'angenommen' && covers(f.bereich, section));
   const mine = state.shares.filter(f => f.owner_id === me && covers(f.bereich, section));
@@ -1130,7 +1246,7 @@ async function viewTeilen(section) {
   app.innerHTML = `
     <h1>👥 Teilen &amp; Zusammenführen</h1>${banner}
     ${invites.length ? `<h2>📨 Einladungen an dich</h2><div class="list">${invites.map(f => `<div class="card" style="margin:0">
-      <b>${esc(f.owner_email)}</b> möchte ${BEREICH_TXT[f.bereich]} mit dir teilen (${RECHT_TXT[f.recht]}).
+      <b>${esc(f.owner_email)}</b> möchte ${BEREICH_TXT[f.bereich] || esc(f.bereich)} mit dir teilen (${RECHT_TXT[f.recht]}).
       <div class="row" style="margin-top:.5rem"><button class="btn small" data-a="accept" data-id="${f.id}">✅ Annehmen</button><button class="btn small secondary" data-a="del" data-id="${f.id}">Ablehnen</button></div></div>`).join('')}</div>` : ''}
     ${mIn.length ? `<h2>🔀 Anfragen zum Zusammenführen</h2><div class="list">${mIn.map(z => `<div class="card" style="margin:0">
       ${mText(z)} <span class="badge">${BEREICH_TXT[z.bereich]}</span>
@@ -1146,7 +1262,7 @@ async function viewTeilen(section) {
     <form class="card" id="invForm">
       <label>E-Mail der Person (braucht ein eigenes Konto)</label><input name="email" type="email" required placeholder="name@beispiel.de">
       <div class="grid2"><div><label>Recht</label><select name="recht"><option value="lesen">👁️ nur lesen</option><option value="bearbeiten">✏️ bearbeiten</option></select></div>
-      <div><label>Bereich</label><select name="bereich"><option value="${section}">${BEREICH_TXT[section]}</option><option value="beide">${BEREICH_TXT.beide}</option></select></div></div>
+      <div><label>Bereich</label><select name="bereich">${bereichOpts}</select></div></div>
       <div style="height:.8rem"></div><button class="btn block">📨 Einladen</button>
     </form>
     ${mine.length ? `<div class="list">${mine.map(f => `<div class="card" style="margin:0">
@@ -1159,7 +1275,7 @@ async function viewTeilen(section) {
       <p class="muted" style="margin-top:0">Legt zwei Konten zu einem zusammen. Das andere Konto muss zustimmen. Gleiche Kisten/Sets/Orte werden zusammengelegt, gleiche Teile/Artikel addiert.</p>
       <label>E-Mail des anderen Kontos</label><input name="email" type="email" required placeholder="name@beispiel.de">
       <label>Richtung</label><select name="richtung"><option value="zu_dir">Meine Daten → in das andere Konto</option><option value="zu_mir">Daten des anderen Kontos → zu mir</option></select>
-      <label>Bereich</label><select name="bereich"><option value="${section}">${BEREICH_TXT[section]}</option><option value="beide">${BEREICH_TXT.beide}</option></select>
+      <label>Bereich</label><select name="bereich">${section.startsWith('c:') ? bereichOpts : `<option value="${section}">${BEREICH_TXT[section]}</option><option value="beide">${BEREICH_TXT.beide}</option><option value="lego">${BEREICH_TXT.lego}</option><option value="alle">${BEREICH_TXT.alle}</option>`}</select>
       <div style="height:.8rem"></div><button class="btn block secondary">🔀 Anfrage senden</button>
     </form>
     ${mOut.length ? `<h3>Gesendete Anfragen</h3><div class="list">${mOut.map(z => `<div class="card" style="margin:0">${mText(z)} <span class="badge">${BEREICH_TXT[z.bereich]}</span> <span class="badge orange">wartet</span>
@@ -1182,7 +1298,7 @@ async function viewTeilen(section) {
           toast(a === 'revoke' ? 'Zugriff entzogen.' : a === 'leave' ? 'Verlassen.' : 'Abgelehnt.');
         }
         else if (a === 'recht') { const f = byId(state.shares, id); const { error } = await sb.rpc('freigabe_aendern', { p_id: id, p_bereich: f.bereich, p_recht: el.value }); if (error) throw error; toast('Recht geändert.'); }
-        else if (a === 'view') { viewAsShare(byId(state.shares, id)); location.hash = section === 'vorrat' ? '#v/liste' : '#teile'; return; }
+        else if (a === 'view') { const sh = byId(state.shares, id); viewAsShare(sh); location.hash = sh.bereich === 'vorrat' || (sh.bereich === 'beide' && section === 'vorrat') ? '#v/liste' : sh.bereich === 'lego' ? '#l/teile' : sh.bereich?.startsWith('c:') ? '#c/' + sh.bereich.slice(2) : '#teile'; return; }
         else if (a === 'mno') { const { error } = await sb.rpc('zusammenfuehrung_ablehnen', { p_id: id }); if (error) throw error; toast('Anfrage abgelehnt.'); }
         else if (a === 'mdel') { const { error } = await sb.from('zusammenfuehrungen').delete().eq('id', id); if (error) throw error; }
         else if (a === 'mprev') {

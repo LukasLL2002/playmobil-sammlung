@@ -109,3 +109,18 @@ body.mode-v .qty button{background:#e8f5e9;color:#2e7d32}
 @media (min-width:700px){body{padding-bottom:0}#tabbar{position:sticky;top:52px;bottom:auto;border:0;border-bottom:1px solid var(--border);max-width:none}#tabbar a{flex-direction:row;justify-content:center;gap:.4rem;font-size:1rem;padding:.7rem}#tabbar a span{font-size:1.2rem}.fab{bottom:2rem;right:2rem}#toast{bottom:2rem}}
 @media print{#topbar,#tabbar,.noprint,.fab,#toast{display:none!important}body{background:#fff;padding:0}main{max-width:none;padding:0}.label{border:1px dashed #666}.label.skip{display:none}}
 .card .btn-link{color:var(--blue);font-size:.85rem}
+
+body.mode-lego #modebar a.active{background:#f9a825;border-color:#f9a825;color:#111}
+body.mode-lego #topbar{background:#f9a825;color:#111}
+body.mode-lego #topbar .btn-link{color:#111}
+body.mode-lego #tabbar a.active{color:#e65100}
+body.mode-lego .qty button{background:#fff8e1;color:#e65100}
+body.mode-c #modebar a.active{background:var(--c, #1565c0);border-color:var(--c, #1565c0)}
+#modebar{flex-wrap:wrap}
+#modebar a[data-mode^="c"]{border-left:3px solid var(--c,#1565c0)}
+.offerbtn{background:#fff3e0;color:#e65100;border:0;border-radius:8px;padding:.35rem .45rem;font-size:.9rem;cursor:pointer;margin-left:.2rem}
+.tablewrap{overflow:auto;max-width:100%}
+table.mini{border-collapse:collapse;font-size:.8rem;width:100%}
+table.mini th,table.mini td{border:1px solid #ddd;padding:.25rem .4rem;text-align:left}
+table.mini th{background:#f5f5f5}
+.vitem .qty{flex-wrap:wrap;justify-content:flex-end}

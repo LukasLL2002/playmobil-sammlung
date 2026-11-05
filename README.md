@@ -18,3 +18,11 @@ Statische Seite (HTML/CSS/JS) mit Supabase als Backend. Im Code steht nur der ö
 - **Teilen** (Tab „👥 Teilen“ in beiden Bereichen): per E-Mail einladen, mit dem Recht *nur lesen* oder *bearbeiten*, für einen Bereich oder beide. Die eingeladene Person nimmt die Einladung an oder lehnt sie ab. Danach wählt sie oben unter „Sammlung“ die geteilte Sammlung aus. Der Besitzer kann den Zugriff jederzeit entziehen, das Mitglied kann die Sammlung verlassen. Einträge, die ein Mitglied anlegt, gehören dem Besitzer.
 - **Zusammenführen**: Konto A fragt an, entweder „Meine Daten → zu dir“ oder „Deine Daten → zu mir“. Das andere Konto sieht eine Vorschau und muss zustimmen. Gleiche Kisten/Tüten, Sets und Orte (Nummer bzw. Name) werden zusammengelegt. Bei gleichen Teilen (Nr. + Farbe in derselben Kiste) wird die Anzahl addiert, bei gleichen Vorratsartikeln (Name + Einheit + Ort) die Menge. Fotos verschiebt die App danach. Admins können im Admin-Tab zwei Konten direkt zusammenführen.
 - Die SQL-Migration liegt in `supabase/teilen_zusammenfuehren.sql`. Die Tabellen heißen `freigaben` und `zusammenfuehrungen`; alle Funktionen sind SECURITY DEFINER im Schema `private`, mit RLS auf allen Tabellen.
+
+## Neu: Import, Chargen, LEGO, eigene Bereiche, Angebote
+
+- **Excel/CSV-Import** (SheetJS): Übersicht → Import; deutsche Vorlagen; Spaltenzuordnung; fehlende Kisten/Sets/Orte werden angelegt.
+- **Mehrere MHDs (Chargen)** pro Vorratsartikel (`vorrat_chargen`); Gesamtmengen/frühestes MHD bleiben auf `vorrat` synchron; ± wählt bei mehreren Chargen aus.
+- **LEGO**: eigener Bereich (Kisten/Sets/Teile), Import/Export; optionale Rebrickable-Set-Suche mit **eigenem** API-Key (nur lokal gespeichert).
+- **Eigene Bereiche**: ＋ in der Modebar → Name/Icon/Farbe/Vorlage, konfigurierbare Felder, Orte, Import, Teilen (`c:<uuid>`).
+- **Angebote**: PLZ nur lokal; Ort via Nominatim; Deep-Links zu MeinProspekt/kaufDA/Marktguru (keine Flyer-Preise in der App); optional Märkte-Open-Data.
