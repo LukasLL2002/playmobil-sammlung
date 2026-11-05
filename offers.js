@@ -74,15 +74,14 @@ function viewPlzSettings() {
     <a class="back" href="#v/liste">‹ Vorrat</a>
     <h1>📍 PLZ & Angebote</h1>
     <div class="card">
-      <p class="muted" style="margin-top:0">Deine PLZ wird <b>nur lokal</b> in diesem Browser gespeichert (kein GPS, kein Server). Damit öffnen wir Deep-Links zu Prospekt-Seiten – wir laden <b>keine</b> Flyer-Preise in die App und versprechen keine aktuellen Angebote.</p>
+      <p class="muted" style="margin-top:0">PLZ bleibt auf dem Gerät. Die App öffnet die Anbietersuche – Preise und Gültigkeit stehen auf der Anbieter-Seite.</p>
       <label>Postleitzahl</label>
       <input id="plz" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" value="${esc(plz)}" placeholder="z.B. 80331">
-      <button class="btn block" id="save" style="margin-top:.8rem;background:#2e7d32">Speichern & Ort auflösen</button>
-      <div id="info" style="margin-top:.8rem">${cache ? `<span class="badge green">Ort: ${esc(cache.city)}</span>` : ''}</div>
+      <button class="btn block" id="save" style="margin-top:.8rem;background:#2e7d32">Speichern</button>
+      <div id="info" style="margin-top:.8rem">${cache ? `<span class="badge green">${esc(cache.city)}</span>` : ''}</div>
     </div>
     <div class="card">
       <h2 style="margin-top:0">Märkte in der Nähe</h2>
-      <p class="muted">Open-Data-Liste (Name, Adresse, Öffnungszeiten) – keine Preise.</p>
       <button class="btn secondary block" id="maerkte">🏪 Märkte laden</button>
       <div id="ml" style="margin-top:.8rem"></div>
     </div>`;
@@ -102,16 +101,22 @@ async function loadMaerkte(el) {
   if (plz.length !== 5) { toast('Bitte zuerst eine PLZ speichern.'); return viewPlzSettings(); }
   el.innerHTML = '<p class="muted">Lädt …</p>';
   try {
-    const r = await fetch(`https://supermarkt-in-meiner-naehe.de/api/search?plz=${encodeURIComponent(plz)}&limit=20`);
-    if (!r.ok) throw new Error('Märkte-API: HTTP ' + r.status);
+    let info = null;
+    try { info = await resolvePlz(plz); } catch { /* Ort optional */ }
+    const url = `https://supermarkt-in-meiner-naehe.de/api/search?plz=${encodeURIComponent(plz)}&limit=20`
+      + (info?.city ? `&city=${encodeURIComponent(info.city)}` : '');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const list = Array.isArray(data) ? data : (data.results || data.stores || data.data || []);
+    const list = Array.isArray(data) ? data
+      : (data.records || data.results || data.stores || data.data || []);
     if (!list.length) { el.innerHTML = '<p class="muted">Keine Märkte gefunden.</p>'; return; }
     el.innerHTML = `<div class="list">${list.slice(0, 20).map(m => {
-      const name = m.name || m.title || m.store || 'Markt';
-      const addr = [m.street || m.adresse || m.address, m.plz || m.zip, m.city || m.ort].filter(Boolean).join(', ');
+      const name = m.name || m.title || m.store || m.trade_label || 'Markt';
+      const street = [m.street || m.adresse || m.address, m.housenumber || m.house_number || m.hausnummer].filter(Boolean).join(' ');
+      const addr = [street, m.postcode || m.plz || m.zip, m.city || m.ort].filter(Boolean).join(', ');
       const hours = m.opening_hours || m.oeffnungszeiten || m.hours || '';
-      const link = m.url || m.website || m.link || m.flyer_url || '';
+      const link = m.website || m.url || m.link || m.flyer_url || '';
       return `<div class="card" style="margin:0"><b>${esc(name)}</b>
         ${addr ? `<div class="sub muted">${esc(addr)}</div>` : ''}
         ${hours ? `<div class="sub muted">🕒 ${esc(typeof hours === 'string' ? hours : JSON.stringify(hours))}</div>` : ''}
@@ -119,7 +124,7 @@ async function loadMaerkte(el) {
       </div>`;
     }).join('')}</div>`;
   } catch (e) {
-    el.innerHTML = `<p class="muted">Konnte Märkte nicht laden (${esc(e.message)}). Du kannst Angebote trotzdem über die Produkt-Links öffnen.</p>`;
+    el.innerHTML = `<p class="muted">Märkte nicht geladen (${esc(e.message)}).</p>`;
   }
 }
 
@@ -136,12 +141,11 @@ async function openAngebote(it) {
   try { info = await resolvePlz(plz); } catch (e) { return fail(e); }
   const term = offerSearchTerm(it);
   const links = offerLinks(it, info);
-  const html = `<form><h2 style="margin-top:0">🛒 Angebote in ${esc(info.city)}</h2>
-    <p class="muted">Suche nach „<b>${esc(term)}</b>“ auf den Anbieter-Seiten. Die App zeigt <b>keine Preise</b> und importiert keine Flyer-Daten – aktuelle Preise und Gültigkeit siehst du nur beim Anbieter.</p>
-    <div class="list">${links.map(l => `<a class="btn block secondary" style="margin:.3rem 0;text-align:left" href="${esc(l.url)}" target="_blank" rel="noopener">Angebote beim Anbieter ansehen: ${esc(l.name)} <small class="muted">↗</small></a>`).join('')}</div>
-    <p class="muted" style="font-size:.85rem">Die Links sind generische Suchen. Ob und zu welchem Preis etwas im Angebot ist, entscheidet die jeweilige Seite – nicht diese App.</p>
+  const html = `<form><h2 style="margin-top:0">🛒 ${esc(term)} · ${esc(info.city)}</h2>
+    <p class="muted">PLZ bleibt auf dem Gerät. App öffnet die Anbietersuche – Preise und Gültigkeit auf der Anbieter-Seite.</p>
+    <div class="list">${links.map(l => `<a class="btn block secondary" style="margin:.3rem 0;text-align:left" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)} ↗</a>`).join('')}</div>
     <div class="row" style="margin-top:1rem"><button type="button" class="btn secondary grow" data-cancel>Schließen</button>
-      <a class="btn grow" href="#v/plz" style="text-align:center;background:#2e7d32">PLZ ändern</a></div></form>`;
+      <a class="btn grow" href="#v/plz" style="text-align:center;background:#2e7d32">PLZ</a></div></form>`;
   const p = dialog(html);
   dialog.current._save = async () => true;
   return p;
