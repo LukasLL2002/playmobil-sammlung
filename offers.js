@@ -58,10 +58,20 @@ function viewPlzSettings() {
       <div id="info" style="margin-top:.8rem">${cache ? `<span class="badge green">${esc(cache.city)}</span>` : ''}</div>
     </div>
     <div class="card">
+      <h2 style="margin-top:0">Bevorzugte Angebotsseite</h2>
+      <select id="src" style="margin:0">
+        <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''}>MeinProspekt (Standard)</option>
+        <option value="kaufda" ${getOfferSource()==='kaufda'?'selected':''}>kaufDA</option>
+        <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru</option>
+      </select>
+      <p class="muted" style="font-size:.85rem">Öffnet die gefilterte Liste beim Anbieter – keine Preise in der App.</p>
+    </div>
+    <div class="card">
       <h2 style="margin-top:0">Märkte in der Nähe</h2>
       <button class="btn secondary block" id="maerkte">🏪 Märkte laden</button>
       <div id="ml" style="margin-top:.8rem"></div>
     </div>`;
+  document.getElementById('src').onchange = e => { setOfferSource(e.target.value); toast('Quelle: ' + e.target.selectedOptions[0].text); };
   document.getElementById('save').onclick = async () => {
     const v = document.getElementById('plz').value.trim();
     try {
@@ -104,13 +114,24 @@ async function loadMaerkte(el) {
   }
 }
 
+const OFFER_SRC_KEY = 'vorratOfferSource'; // meinprospekt | kaufda | marktguru
+function getOfferSource() {
+  const v = localStorage.getItem(OFFER_SRC_KEY);
+  return ['meinprospekt', 'kaufda', 'marktguru'].includes(v) ? v : 'meinprospekt';
+}
+function setOfferSource(v) {
+  if (['meinprospekt', 'kaufda', 'marktguru'].includes(v)) localStorage.setItem(OFFER_SRC_KEY, v);
+}
+
+/** Öffentlicher Listen-/Such-Link (kein Angebot-ID, kein Scraping). */
 function offerSearchTerm(it) {
-  const ean = String(it.barcode || '').replace(/\D/g, '');
-  if (ean.length >= 8) return ean;
+  const custom = String(it.angebotsname || '').trim();
+  if (custom) return custom.slice(0, 40);
+  // Kein EAN in Prospekt-Slugs – generischer Produktname/Kategorie
   const raw = (it.name || it.kategorie || '').trim();
-  const stop = new Set(['und', 'oder', 'der', 'die', 'das', 'mit', 'ohne', 'bio', 'von', 'für']);
-  const words = raw.split(/[\s,/|]+/).filter(w => w && !stop.has(w.toLowerCase()) && !/^\d/.test(w));
-  return (words.slice(0, 3).join(' ') || raw).slice(0, 40);
+  const stop = new Set(['und', 'oder', 'der', 'die', 'das', 'mit', 'ohne', 'bio', 'von', 'für', 'gehackt', 'frische', 'frisch']);
+  const words = raw.split(/[\s,/|()-]+/).filter(w => w && !stop.has(w.toLowerCase()) && !/^\d/.test(w) && w.length > 1);
+  return (words.slice(0, 2).join(' ') || raw).slice(0, 40);
 }
 
 function offerLinks(it, cityInfo) {
@@ -119,11 +140,15 @@ function offerLinks(it, cityInfo) {
   const q = encodeURIComponent(term);
   const city = cityInfo.slug;
   const cityTc = cityInfo.title || cityTitle(cityInfo.city);
-  return [
-    { name: 'Marktguru', primary: true, url: `https://www.marktguru.de/search/${q}` },
-    { name: 'MeinProspekt', url: `https://www.meinprospekt.de/${city}/angebote/${pslug}` },
-    { name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(String(term).replace(/\s+/g, '-'))}` },
-  ];
+  // Nur bekannte öffentliche Listen-/Such-URLs – keine erfundenen Angebots-IDs
+  const all = {
+    meinprospekt: { id: 'meinprospekt', name: 'MeinProspekt', url: `https://www.meinprospekt.de/${city}/angebote/${pslug}` },
+    kaufda: { id: 'kaufda', name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(String(term).replace(/\s+/g, '-'))}` },
+    marktguru: { id: 'marktguru', name: 'Marktguru', url: `https://www.marktguru.de/search/${q}` },
+  };
+  const pref = getOfferSource();
+  const primary = all[pref] || all.meinprospekt;
+  return { term, primary, others: Object.values(all).filter(l => l.id !== primary.id) };
 }
 
 const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0, 10); };
@@ -156,8 +181,8 @@ async function openAngebote(it) {
     const best = bestAngebot(list);
     const aktiv = list.filter(isActiveOffer);
     const alt = list.filter(o => !isActiveOffer(o));
-    const links = info ? offerLinks(it, info) : [];
-    const primary = links.find(l => l.primary) || links[0];
+    const pack = info ? offerLinks(it, info) : null;
+    const primary = pack?.primary;
     const d = dialog.current;
     if (!d) return;
     d.querySelector('#aoBody').innerHTML = `
@@ -167,11 +192,20 @@ async function openAngebote(it) {
         <div class="muted" style="font-size:.85rem">gültig ${esc(fmtDate(best.gueltig_ab))} – ${esc(fmtDate(best.gueltig_bis))} · Von dir erfasst</div>
         ${best.notiz ? `<div class="muted" style="font-size:.85rem">${esc(best.notiz)}</div>` : ''}
         ${best.quelle_url ? `<a class="btn small secondary" href="${esc(best.quelle_url)}" target="_blank" rel="noopener">Quelle / Beleg ↗</a>` : ''}
-      </div>` : `<p class="muted">Noch kein gültiges Angebot gespeichert. Im Prospekt prüfen und hier eintragen.</p>`}
+      </div>` : `<p class="muted">Kein selbst erfasstes Angebot. Extern die Anbieter-Liste öffnen (keine Live-Preise in der App).</p>`}
 
-      ${primary ? `<a class="btn block" style="background:#2e7d32;margin:.4rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">Im Prospekt prüfen (${esc(primary.name)}) ↗</a>
-        <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem">${links.filter(l => l !== primary).map(l => `<a class="btn small secondary" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join('')}${!info ? '<a class="btn small secondary" href="#v/plz">PLZ setzen</a>' : ''}</div>`
-        : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, dann Prospekt-Links nutzen.</p>`}
+      ${primary ? `<a class="btn block" id="aoOpen" style="background:#2e7d32;margin:.4rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">Beste Angebote bei ${esc(primary.name)} öffnen ↗</a>
+        <p class="muted" style="font-size:.85rem;margin:.2rem 0 .5rem">Suche: „${esc(pack.term)}“ in ${esc(info.city)} – gefilterte Angebotsseite beim Anbieter (kein Scraping).</p>
+        <div class="row" style="flex-wrap:wrap;gap:.4rem;align-items:center;margin-bottom:.6rem">
+          <label class="muted" style="font-size:.85rem;margin:0">Quelle:</label>
+          <select id="aoSrc" style="flex:1;min-width:8rem;margin:0">
+            <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''}>MeinProspekt</option>
+            <option value="kaufda" ${getOfferSource()==='kaufda'?'selected':''}>kaufDA</option>
+            <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru</option>
+          </select>
+          ${pack.others.map(l => `<a class="btn small secondary" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join('')}
+        </div>`
+        : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, dann Anbieter-Liste öffnen.</p>`}
 
       <details ${!best ? 'open' : ''}><summary><b>＋ Angebot erfassen</b> <span class="muted">(von dir, kein Live-Preis)</span></summary>
         <div style="margin-top:.6rem">
@@ -220,6 +254,8 @@ async function openAngebote(it) {
       list = list.filter(x => x.id !== id);
       toast('Gelöscht.'); render();
     });
+    const srcSel = d.querySelector('#aoSrc');
+    if (srcSel) srcSel.onchange = () => { setOfferSource(srcSel.value); render(); };
   };
 
   const html = `<form><h2 style="margin-top:0">🛒 ${esc(it.name)}</h2>

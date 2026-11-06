@@ -830,7 +830,7 @@ function vForm(id) {
   const isNew = !id || id.startsWith('neu');
   let it = isNew ? null : vstate.items.find(x => x.id === Number(id));
   if (!isNew && !it) { app.innerHTML = '<div class="card">Artikel nicht gefunden. <a href="#v/liste">Zur Liste</a></div>'; return; }
-  it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', notiz: '' };
+  it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', angebotsname: '', notiz: '' };
   let file = null;
   const u = imgUrl(it);
   const scan = 'BarcodeDetector' in window;
@@ -841,6 +841,8 @@ function vForm(id) {
     <h1>${isNew ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
     <form id="f" class="card">
       <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt">
+      <label for="angebotsname">Angebotsname <span class="muted">(für Prospekt-Suche, z.B. Milch)</span></label>
+      <input id="angebotsname" value="${esc(it.angebotsname || '')}" placeholder="leer = aus Artikelname">
       <div class="grid2">
         <div><label for="kat">Kategorie</label><input id="kat" list="katliste" value="${esc(it.kategorie)}" placeholder="z.B. Konserven"></div>
         <div><label for="ein">Einheit</label><input id="ein" list="einliste" value="${esc(it.einheit)}"></div>
@@ -939,6 +941,7 @@ function vForm(id) {
     try {
       const row = {
         name: document.getElementById('name').value.trim(),
+        angebotsname: document.getElementById('angebotsname').value.trim() || null,
         kategorie: document.getElementById('kat').value.trim() || null,
         einheit: document.getElementById('ein').value.trim() || null,
         mindestbestand: parseDec(document.getElementById('min').value),

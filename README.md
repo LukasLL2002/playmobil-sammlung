@@ -30,3 +30,5 @@ Statische Seite (HTML/CSS/JS) mit Supabase als Backend. Im Code steht nur der ö
 ## Preise & manuelle Angebote
 - Listen/Details zeigen bei Menge > 1: `Einzelpreis: … · Gesamt: …` (Playmobil `euro`, LEGO `euro`, Vorrat `preis`×`menge`, Custom-Euro-Feld×Anzahl).
 - Vorrat → 🛒: **Bestes gespeichertes Angebot** aus von dir erfassten Einträgen (`vorrat_angebote`); plus „Im Prospekt prüfen“. Kein Live-Preis-Feed.
+
+- Prospekt-Links: `/{stadt}/angebote/{slug}` (MeinProspekt) o.ä. – nur externe Listen, kein Scraping. Optional `angebotsname` + bevorzugte Quelle (localStorage).
