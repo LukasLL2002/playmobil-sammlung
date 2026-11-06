@@ -1,19 +1,23 @@
 {
-  "ok": true,
-  "checks": {
-    "parseCount": 3,
-    "hasMilk": true,
-    "butterQty2": true,
-    "noSumme": true,
-    "milkKat": true,
-    "milkUnit": true,
-    "banner": true,
-    "missHint": true,
-    "lineCards": 3,
-    "fieldMiss": true,
-    "afterSaveComplete": true,
-    "savedItems": true,
-    "fpSaved": true,
-    "noDupImport": true
-  }
+  "result": {
+    "ok": true,
+    "checks": {
+      "parseCount": 3,
+      "hasMilk": true,
+      "butterQty2": true,
+      "noSumme": true,
+      "milkKat": true,
+      "milkUnit": true,
+      "banner": true,
+      "missHint": true,
+      "lineCards": 3,
+      "fieldMiss": true,
+      "afterSaveComplete": true,
+      "savedItems": true,
+      "fpSaved": true,
+      "noDupImport": true
+    }
+  },
+  "errors": [],
+  "bodySnippet": "{\n  \"ok\": true,\n  \"checks\": {\n    \"parseCount\": 3,\n    \"hasMilk\": true,\n    \"butterQty2\": true,\n    \"noSumme\": true,\n    \"milkKat\": true,\n    \"milkUnit\": true,\n    \"banner\": true,\n    \"missHint\": true,\n    \"lineCards\": 3,\n    \"fieldMiss\": true,\n    \"afterSaveComplete\": true,\n    \"savedItems\": true,\n    \"fpSaved\": true,\n    \"noDupImport\": true\n  }\n}\n📦 Sortiva · Vorrat\n‹ Vorrat\n📷 Kassenbon\n\nErledigt – 3 Artikel aus dem Bon übernommen.\n\nDenselben Bon übernimmst du nicht noch einmal.\n\nZur Liste Ne"
 }

@@ -298,7 +298,7 @@ function cFelder(b) {
     if (error) return fail(error); cstate.felder.push(data); cFelder(b);
   };
   app.querySelectorAll('[data-d]').forEach(btn => btn.onclick = async () => {
-    if (!confirm('Feld entfernen? Bestehende Werte in Einträgen bleiben im JSON, werden aber nicht mehr angezeigt.')) return;
+    if (!confirm('Feld entfernen? Vorhandene Werte in Einträgen bleiben gespeichert, werden aber nicht mehr angezeigt.')) return;
     const { error } = await sb.from('custom_felder').delete().eq('id', btn.dataset.d); if (error) return fail(error);
     cstate.felder = cstate.felder.filter(x => x.id !== Number(btn.dataset.d)); cFelder(b);
   });

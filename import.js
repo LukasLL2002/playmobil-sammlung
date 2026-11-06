@@ -24,7 +24,7 @@ const IMPORT_TEMPLATES = {
 
 function downloadTemplate(kind) {
   const t = IMPORT_TEMPLATES[kind]; if (!t) return;
-  if (!window.XLSX) return toast('SheetJS noch nicht geladen.');
+  if (!window.XLSX) return toast('Datei-Lesen ist noch nicht bereit. Bitte Seite neu laden.');
   const ws = XLSX.utils.aoa_to_sheet([t.headers, ...t.sample]);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Vorlage');
   XLSX.writeFile(wb, `vorlage-${kind}.xlsx`);
@@ -46,7 +46,7 @@ async function parseImportFile(file) {
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
-  if (!rows.length) throw new Error('Die Datei ist leer.');
+  if (!rows.length) throw new Error('Die Datei enthält keine Zeilen.');
   const headers = rows[0].map(h => String(h ?? '').trim());
   const data = rows.slice(1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
   return { headers, data };
@@ -111,7 +111,7 @@ async function runPlaymobilImport(rows, map, onProg) {
     try {
       const teile_nr = cell(r, map.teile_nr) || null;
       const beschreibung = cell(r, map.beschreibung) || null;
-      if (!teile_nr && !beschreibung) throw new Error('teile_nr oder beschreibung fehlt');
+      if (!teile_nr && !beschreibung) throw new Error('Teile-Nr. oder Beschreibung fehlt');
       const anzahl = Math.max(0, Math.round(cellNum(r, map.anzahl) ?? 1));
       const euro = cellNum(r, map.euro);
       const farbe = cell(r, map.farbe) || null;
@@ -143,7 +143,7 @@ async function runVorratImport(rows, map, onProg) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     try {
-      const name = cell(r, map.name); if (!name) throw new Error('Name fehlt');
+      const name = cell(r, map.name); if (!name) throw new Error('Name fehlt in dieser Zeile.');
       const menge = Math.max(0, cellNum(r, map.menge) ?? 0);
       const mhd = cellDate(r, map.mhd);
       const ort_id = await ensureOrt(cell(r, map.ort), oCache);
@@ -170,7 +170,7 @@ async function runLegoImport(rows, map, onProg) {
     try {
       const teile_nr = cell(r, map.teile_nr) || null;
       const beschreibung = cell(r, map.beschreibung) || null;
-      if (!teile_nr && !beschreibung) throw new Error('teile_nr oder beschreibung fehlt');
+      if (!teile_nr && !beschreibung) throw new Error('Teile-Nr. oder Beschreibung fehlt');
       let kiste_id = null; const kn = cell(r, map.kiste_nummer);
       if (kn) kiste_id = await ensureKiste(kn, cell(r, map.kiste_art) || 'Kiste', kCache, 'lego_kisten');
       const row = { teile_nr, farbe: cell(r, map.farbe) || null, beschreibung, anzahl: Math.max(0, Math.round(cellNum(r, map.anzahl) ?? 1)),
@@ -195,7 +195,7 @@ async function runCustomImport(bereichId, rows, headers, mapFieldKeys, onProg) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     try {
-      const name = cell(r, mapFieldKeys.nameIdx); if (!name) throw new Error('Name fehlt');
+      const name = cell(r, mapFieldKeys.nameIdx); if (!name) throw new Error('Name fehlt in dieser Zeile.');
       let ort_id = null; const on = cell(r, mapFieldKeys.ortIdx);
       if (on) {
         if (ortCache.has(norm(on))) ort_id = ortCache.get(norm(on));
@@ -225,9 +225,9 @@ function viewImport(kind, customBereichId) {
   let parsed = null, map = null;
   app.innerHTML = `
     <a class="back" href="${kind === 'vorrat' ? '#v/liste' : kind === 'lego' ? '#l/teile' : kind === 'custom' ? '#c/' + customBereichId : '#teile'}">‹ Zurück</a>
-    <h1>📥 Import: ${esc(title)}</h1>
+    <h1>📥 Übernehmen: ${esc(title)}</h1>
     <div class="card">
-      <p class="muted" style="margin-top:0">Excel (.xlsx/.xls) oder CSV hochladen. Spalten zuordnen, prüfen, dann importieren. Fehlende Kisten/Sets/Orte werden angelegt.</p>
+      <p class="muted" style="margin-top:0">Excel- oder Tabellen-Datei wählen. Spalten zuordnen, prüfen und übernehmen. Fehlende Kisten, Sets oder Orte werden automatisch angelegt.</p>
       ${tpl ? `<button class="btn secondary small" id="tpl">📄 Deutsche Vorlage herunterladen</button>` : ''}
       <label class="btn block" style="margin-top:.8rem">📁 Datei wählen<input id="file" type="file" accept=".xlsx,.xls,.csv,text/csv" hidden></label>
     </div>
@@ -256,7 +256,7 @@ function viewImport(kind, customBereichId) {
         <p class="muted">${num(parsed.data.length)} Zeilen erkannt. Vorschau der ersten 5:</p>
         <div class="tablewrap"><table class="mini"><tr>${parsed.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
           ${parsed.data.slice(0, 5).map(r => `<tr>${parsed.headers.map((_, i) => `<td>${esc(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</table></div>
-        <button class="btn block" id="go" style="margin-top:1rem">▶ Import starten</button></div>`;
+        <button class="btn block" id="go" style="margin-top:1rem">▶ Übernehmen</button></div>`;
       // guess name
       const ni = parsed.headers.findIndex(h => /name|titel|bezeichnung/i.test(h));
       if (ni >= 0) document.getElementById('m_name').value = ni;
@@ -278,7 +278,7 @@ function viewImport(kind, customBereichId) {
       <p class="muted">${num(parsed.data.length)} Zeilen · Vorschau:</p>
       <div class="tablewrap"><table class="mini"><tr>${parsed.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
         ${parsed.data.slice(0, 5).map(r => `<tr>${parsed.headers.map((_, i) => `<td>${esc(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</table></div>
-      <button class="btn block" id="go" style="margin-top:1rem">▶ Import starten</button></div>`;
+      <button class="btn block" id="go" style="margin-top:1rem">▶ Übernehmen</button></div>`;
     document.getElementById('go').onclick = async () => {
       const m = {}; wiz.querySelectorAll('[data-f]').forEach(el => { m[el.dataset.f] = Number(el.value); });
       const runner = kind === 'playmobil' ? runPlaymobilImport : kind === 'vorrat' ? runVorratImport : runLegoImport;
@@ -289,15 +289,15 @@ function viewImport(kind, customBereichId) {
   let prog = () => {};
   async function doImport(fn) {
     const wiz = document.getElementById('wiz');
-    wiz.innerHTML = `<div class="card"><p>Import läuft …</p><progress id="pg" max="100" value="0" style="width:100%"></progress><p id="pgTxt" class="muted"></p></div>`;
+    wiz.innerHTML = `<div class="card"><p>Wird übernommen …</p><progress id="pg" max="100" value="0" style="width:100%"></progress><p id="pgTxt" class="muted"></p></div>`;
     prog = (i, n) => { document.getElementById('pg').value = Math.round(100 * i / n); document.getElementById('pgTxt').textContent = `${i} / ${n}`; };
     try {
       const { ok, err } = await fn();
       wiz.innerHTML = `<div class="card"><h2>Ergebnis</h2>
-        <p><span class="badge green">${num(ok)} importiert</span> ${err.length ? `<span class="badge red">${num(err.length)} Fehler</span>` : ''}</p>
+        <p><span class="badge green">${num(ok)} übernommen</span> ${err.length ? `<span class="badge red">${num(err.length)} Fehler</span>` : ''}</p>
         ${err.length ? `<details><summary>Fehlerdetails</summary><ul>${err.slice(0, 50).map(e => `<li>Zeile ${e.zeile}: ${esc(e.msg)}</li>`).join('')}${err.length > 50 ? '<li>…</li>' : ''}</ul></details>` : ''}
         <a class="btn block" href="${kind === 'vorrat' ? '#v/liste' : kind === 'lego' ? '#l/teile' : kind === 'custom' ? '#c/' + customBereichId : '#teile'}">Zur Liste</a></div>`;
-      toast(`${ok} Einträge importiert.`, 4000);
+      toast(`${ok} Einträge übernommen.`, 4000);
     } catch (e) { fail(e); }
   }
 }

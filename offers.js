@@ -64,7 +64,7 @@ function viewPlzSettings() {
         <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru (Produktsuche)</option>
         <option value="google" ${getOfferSource()==='google'?'selected':''}>Google-Suche (Fallback)</option>
       </select>
-      <p class="muted" style="font-size:.85rem">Öffnet Kataloge/Suche beim Anbieter – keine Preise und kein Scraping in der App. Stadtseite und Marktguru sind live geprüft (kein Produkt-404).</p>
+      <p class="muted" style="font-size:.85rem">Öffnet Kataloge und Suche beim Anbieter. Preise und Gültigkeit siehst du dort – nicht in der App.</p>
     </div>
     <div class="card">
       <h2 style="margin-top:0">Märkte in der Nähe</h2>
@@ -146,11 +146,11 @@ async function loadMaerkte(el) {
       return `<div class="card" style="margin:0"><b>${esc(name)}</b>
         ${addr ? `<div class="sub muted">${esc(addr)}</div>` : ''}
         ${hours ? `<div class="sub muted">🕒 ${esc(typeof hours === 'string' ? hours : JSON.stringify(hours))}</div>` : ''}
-        ${prosp ? `<a class="btn small" style="background:#2e7d32;margin-top:.4rem" href="${esc(prosp.url)}" target="_blank" rel="noopener">${esc(prosp.label)} ↗</a>` : '<span class="muted">PLZ/Ort fehlt für Prospekt-Link</span>'}
+        ${prosp ? `<a class="btn small" style="background:#2e7d32;margin-top:.4rem" href="${esc(prosp.url)}" target="_blank" rel="noopener">${esc(prosp.label)} ↗</a>` : '<span class="muted">PLZ setzen, um Prospekte zu öffnen</span>'}
       </div>`;
     }).join('')}</div>`;
   } catch (e) {
-    el.innerHTML = `<p class="muted">Märkte nicht geladen (${esc(e.message)}).</p>`;
+    el.innerHTML = `<p class="muted">Märkte konnten nicht geladen werden. Bitte später erneut versuchen.</p>`;
   }
 }
 
@@ -260,7 +260,7 @@ async function openAngebote(it) {
         <div class="muted" style="font-size:.85rem">gültig ${esc(fmtDate(best.gueltig_ab))} – ${esc(fmtDate(best.gueltig_bis))} · Von dir erfasst</div>
         ${best.notiz ? `<div class="muted" style="font-size:.85rem">${esc(best.notiz)}</div>` : ''}
         ${best.quelle_url ? `<a class="btn small secondary" href="${esc(best.quelle_url)}" target="_blank" rel="noopener">Quelle / Beleg ↗</a>` : ''}
-      </div>` : `<p class="muted">Kein selbst erfasstes Angebot. Externe Links öffnen Kataloge/Suche – keine Live-Preise in der App.</p>`}
+      </div>` : `<p class="muted">Noch kein selbst erfasstes Angebot. Die Links öffnen Kataloge und Suche beim Anbieter.</p>`}
 
       ${primary ? `
         <a class="btn block" id="aoOpen" style="background:#2e7d32;margin:.5rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">${esc(primary.short || 'Angebote ansehen')} ↗</a>
@@ -279,7 +279,7 @@ async function openAngebote(it) {
         : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, damit die Stadt-Prospekte geöffnet werden können.</p>
            <a class="btn block secondary" href="https://www.google.com/search?q=${encodeURIComponent((it.angebotsname || it.name || '') + ' Angebote')}" target="_blank" rel="noopener">Angebote suchen (Google) ↗</a>`}
 
-      <details ${!best ? 'open' : ''}><summary><b>＋ Angebot erfassen</b> <span class="muted">(von dir, kein Live-Preis)</span></summary>
+      <details ${!best ? 'open' : ''}><summary><b>＋ Angebot erfassen</b> <span class="muted">(von dir notiert)</span></summary>
         <div style="margin-top:.6rem">
           <label for="aoMarkt">Markt / Laden</label><input id="aoMarkt" required placeholder="z.B. REWE, Aldi">
           <div class="grid2"><div><label for="aoPreis">Preis (€)</label><input id="aoPreis" inputmode="decimal" required placeholder="1,29"></div>

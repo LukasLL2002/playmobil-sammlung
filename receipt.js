@@ -16,22 +16,22 @@ async function ensureTesseract() {
     const s = document.createElement('script');
     s.src = tessBase() + '/tesseract.min.js';
     s.onload = resolve;
-    s.onerror = () => reject(new Error('Tesseract konnte nicht geladen werden (vendor/tesseract).'));
+    s.onerror = () => reject(new Error('Bon-Lesen ist gerade nicht verfügbar. Bitte Seite neu laden oder später erneut versuchen.'));
     document.head.appendChild(s);
   });
-  if (!window.Tesseract?.createWorker) throw new Error('Tesseract global fehlt.');
+  if (!window.Tesseract?.createWorker) throw new Error('Bon-Lesen ist gerade nicht verfügbar. Bitte Seite neu laden.');
   return window.Tesseract;
 }
 
 async function resizeImageForOcr(file, maxSide = 2000) {
-  if (!file || !/^image\//.test(file.type)) throw new Error('Bitte JPG, PNG oder WebP wählen.');
-  if (file.size > 12 * 1024 * 1024) throw new Error('Bild zu groß (max. 12 MB).');
+  if (!file || !/^image\//.test(file.type)) throw new Error('Bitte ein Foto vom Bon wählen (Kamera oder Galerie).');
+  if (file.size > 12 * 1024 * 1024) throw new Error('Das Foto ist zu groß. Bitte ein kleineres wählen oder näher heranzoomen.');
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => {
       const i = new Image();
       i.onload = () => res(i);
-      i.onerror = () => rej(new Error('Bild konnte nicht geladen werden.'));
+      i.onerror = () => rej(new Error('Das Foto konnte nicht geöffnet werden. Bitte ein anderes wählen.'));
       i.src = url;
     });
     const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -272,7 +272,7 @@ function viewBon() {
   if (draft?.phase === 'complete') {
     root.innerHTML = `<div class="card">
       <p><b>Erledigt</b> – ${esc(String(draft.savedCount || 0))} Artikel aus dem Bon übernommen.</p>
-      <p class="muted">Derselbe Bon wird nicht erneut importiert.</p>
+      <p class="muted">Denselben Bon übernimmst du nicht noch einmal.</p>
       <a class="btn block" href="#v/liste" style="background:#2e7d32">Zur Liste</a>
       <button type="button" class="btn secondary block" id="bonNew" style="margin-top:.5rem">Neuen Bon scannen</button>
     </div>`;
@@ -288,16 +288,16 @@ function viewBon() {
 
 function renderBonCapture(root) {
   root.innerHTML = `<div class="card">
-    <p style="margin-top:0"><b>Bon fotografieren / aus Fotos wählen</b></p>
-    <p class="muted">Alles bleibt beim Einlesen auf deinem Gerät. Kein Upload an OCR-Dienste.</p>
-    <p class="muted" style="font-size:.9rem">Bitte prüfen – erkannt aus dem Foto (OCR, nicht immer fehlerfrei).</p>
-    <label class="btn block" style="background:#2e7d32;margin:.6rem 0">📷 Foto aufnehmen / wählen
+    <p style="margin-top:0"><b>Bon fotografieren, Artikel prüfen, fehlende Angaben ergänzen – fertig.</b></p>
+    <p class="muted">Foto wird direkt auf deinem Gerät gelesen und nicht zum Erkennen hochgeladen.</p>
+    <p class="muted" style="font-size:.9rem">Beim ersten Mal kann das Lesen etwas länger dauern. Bitte danach die Artikel kurz prüfen – die Erkennung ist nicht immer fehlerfrei.</p>
+    <label class="btn block" style="background:#2e7d32;margin:.6rem 0">📷 Bon fotografieren / aus Fotos wählen
       <input id="bonFile" type="file" accept="image/*" capture="environment" hidden>
     </label>
     <div id="bonProg" class="muted hidden" style="margin:.5rem 0"></div>
-    <details style="margin-top:.8rem"><summary class="muted">Text einfügen (Fallback)</summary>
-      <textarea id="bonPaste" placeholder="OCR-Text oder manuell …" style="margin-top:.4rem"></textarea>
-      <button type="button" class="btn secondary block" id="bonParsePaste" style="margin-top:.4rem">Text auswerten</button>
+    <details style="margin-top:.8rem"><summary class="muted">Stattdessen Text einfügen</summary>
+      <textarea id="bonPaste" placeholder="Zeilen vom Bon hier einfügen …" style="margin-top:.4rem"></textarea>
+      <button type="button" class="btn secondary block" id="bonParsePaste" style="margin-top:.4rem">Text übernehmen</button>
     </details>
   </div>`;
   const prog = document.getElementById('bonProg');
@@ -307,24 +307,33 @@ function renderBonCapture(root) {
     const file = fileEl.files?.[0]; if (!file || busy) return;
     busy = true; fileEl.disabled = true;
     prog.classList.remove('hidden');
-    prog.textContent = 'Lädt OCR …';
+    prog.textContent = 'Bon wird gelesen …';
     try {
+      let sawLoad = false;
       const text = await ocrReceipt(file, m => {
+        const st = String(m?.status || '');
         const p = m.progress != null ? Math.round(m.progress * 100) : null;
-        prog.textContent = (m.status || 'OCR') + (p != null ? ` ${p}%` : '');
+        if (/loading|initialized|download/i.test(st) && !sawLoad) {
+          sawLoad = true;
+          prog.textContent = 'Vorbereitung … Beim ersten Mal etwas länger.';
+        } else if (/recogniz/i.test(st)) {
+          prog.textContent = 'Bon wird gelesen …' + (p != null ? ` ${p} %` : '');
+        } else {
+          prog.textContent = 'Bon wird gelesen …' + (p != null && p > 0 ? ` ${p} %` : '');
+        }
       });
-      if (!text.trim()) throw new Error('Keine Schrift erkannt – bitte klareres Foto.');
+      if (!text.trim()) throw new Error('Auf dem Foto wurde kein Text erkannt. Bitte schärfer und gerader fotografieren.');
       const fp = await fingerprintFile(file, text);
       if (isBonFingerprintSaved(fp)) {
-        toast('Dieser Bon wurde schon importiert.');
+        toast('Diesen Bon hast du schon übernommen.');
         saveBonDraft({ phase: 'complete', savedCount: 0, fingerprint: fp });
         return viewBon();
       }
       const parsed = parseReceiptText(text).map(enrichBonItem);
       if (!parsed.length) {
-        root.innerHTML = `<div class="card"><p><b>Keine Artikel erkannt.</b></p>
-          <p class="muted">Foto gerader / schärfer versuchen oder Text unten einfügen.</p>
-          <details open><summary>Erkannten Text anzeigen</summary><pre class="bon-raw">${esc(text)}</pre></details>
+        root.innerHTML = `<div class="card"><p><b>Keine Artikel gefunden.</b></p>
+          <p class="muted">Bitte Bon schärfer und gerader fotografieren – oder den Text unten einfügen.</p>
+          <details open><summary>Gelesenen Text anzeigen</summary><pre class="bon-raw">${esc(text)}</pre></details>
           <button type="button" class="btn secondary block" id="bonBack">Zurück</button></div>`;
         document.getElementById('bonBack').onclick = () => viewBon();
         return;
@@ -338,9 +347,9 @@ function renderBonCapture(root) {
   document.getElementById('bonParsePaste').onclick = async () => {
     const text = document.getElementById('bonPaste').value;
     const parsed = parseReceiptText(text).map(enrichBonItem);
-    if (!parsed.length) return toast('Keine Artikel im Text gefunden.');
+    if (!parsed.length) return toast('Im Text wurden keine Artikel gefunden.');
     const fp = await fingerprintFile({ name: 'paste', size: text.length, lastModified: Date.now() }, text);
-    if (isBonFingerprintSaved(fp)) return toast('Diesen Text hast du schon importiert.');
+    if (isBonFingerprintSaved(fp)) return toast('Diesen Text hast du schon übernommen.');
     const draft = { phase: 'preview', fingerprint: fp, rawText: text, items: parsed, ts: Date.now() };
     saveBonDraft(draft);
     renderBonPreview(root, draft);
@@ -353,13 +362,13 @@ function renderBonPreview(root, draft) {
   const eins = typeof EINHEITEN !== 'undefined' ? EINHEITEN : ['Stück', 'Packung', 'kg', 'l'];
   root.innerHTML = `
     <div class="card" style="background:#e8f5e9;border:1px solid #a5d6a7">
-      <b>Bitte prüfen – erkannt aus dem Foto</b>
-      <div class="muted" style="font-size:.9rem">Nur angehakte Zeilen werden gespeichert. MHD und Ort sind optional.</div>
+      <b>Bitte prüfen – so gelesen aus dem Foto</b>
+      <div class="muted" style="font-size:.9rem">Nur angehakte Zeilen werden gespeichert. MHD und Ort kannst du später ergänzen.</div>
     </div>
     <div id="bonLines" class="list"></div>
-    <button type="button" class="btn block" id="bonSave" style="background:#2e7d32;margin-top:.6rem">💾 Ausgewählte speichern</button>
+    <button type="button" class="btn block" id="bonSave" style="background:#2e7d32;margin-top:.6rem">💾 Ausgewählte Artikel speichern</button>
     <button type="button" class="btn secondary block" id="bonCancel" style="margin-top:.4rem">Verwerfen</button>
-    <details style="margin-top:.8rem"><summary class="muted">Erkannten Text anzeigen</summary>
+    <details style="margin-top:.8rem"><summary class="muted">Gelesenen Text anzeigen</summary>
       <pre class="bon-raw">${esc(draft.rawText || '')}</pre></details>`;
 
   const box = document.getElementById('bonLines');
@@ -441,7 +450,7 @@ async function saveBonItems(draft) {
   const btn = document.getElementById('bonSave');
   if (btn?.disabled) return;
   if (draft.fingerprint && isBonFingerprintSaved(draft.fingerprint)) {
-    toast('Dieser Bon wurde schon gespeichert.');
+    toast('Diesen Bon hast du schon gespeichert.');
     draft.phase = 'complete';
     saveBonDraft(draft);
     return viewBon();
@@ -454,7 +463,7 @@ async function saveBonItems(draft) {
     }
   }
   if (btn) btn.disabled = true;
-  toast('Speichert …', 8000);
+  toast('Speichert die Artikel …', 8000);
   const createdItemIds = [];
   const createdChargeIds = [];
   try {
@@ -521,12 +530,12 @@ async function saveBonItems(draft) {
     } catch (e2) {
       console.error('Rollback teilweise fehlgeschlagen', e2);
       fail(e);
-      toast('Konnte nicht alles speichern; Rollback unvollständig – bitte Liste prüfen.', 6000);
+      toast('Speichern hat nicht geklappt. Bitte die Vorratsliste kurz prüfen.', 6000);
       if (btn) btn.disabled = false;
       return;
     }
     fail(e);
-    toast('Konnte nicht alles speichern, nichts angelegt.', 5000);
+    toast('Konnte nicht alles speichern – es wurde nichts angelegt.', 5000);
     if (btn) btn.disabled = false;
   }
 }

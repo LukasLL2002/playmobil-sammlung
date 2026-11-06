@@ -58,10 +58,30 @@ const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u030
 const baseUrl = () => location.origin + location.pathname;
 const kisteUrl = id => baseUrl() + '#kiste/' + id;
 function toast(msg, ms = 2500) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
+function friendlyError(err) {
+  if (!err) return 'Etwas ist schiefgelaufen. Bitte erneut versuchen.';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false)
+    return 'Du bist gerade offline. Neue Einträge werden gespeichert und später übertragen.';
+  const code = err.code || err.status;
+  if (code === '42501') return 'Du darfst das hier nicht ändern (nur Leserecht).';
+  if (code === '23505') return 'Diesen Eintrag gibt es bei dir schon – bitte einen anderen Namen oder eine andere Nummer wählen.';
+  if (code === '23503') return 'Dieser Eintrag gehört zu einem anderen Konto und kann so nicht verknüpft werden.';
+  if (code === 'PGRST301' || code === 401) return 'Bitte melde dich erneut an.';
+  let msg = String(err.message || err || '').trim();
+  if (!msg) return 'Etwas ist schiefgelaufen. Bitte erneut versuchen.';
+  // Technische DB-/Netz-Texte abmildern
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(msg))
+    return 'Keine Verbindung. Prüfe dein Internet und versuche es erneut.';
+  if (/JWT|refresh_token|session|Auth/i.test(msg)) return 'Bitte melde dich erneut an.';
+  if (/row-level security|RLS|permission denied|violates/i.test(msg)) return 'Keine Berechtigung für diese Aktion.';
+  if (/duplicate key/i.test(msg)) return 'Diesen Eintrag gibt es schon.';
+  if (/column|relation|schema|null value|PGRST/i.test(msg)) return 'Speichern hat nicht geklappt. Bitte Eingaben prüfen und erneut versuchen.';
+  if (msg.length > 160) msg = msg.slice(0, 157) + '…';
+  return msg;
+}
 function fail(err) {
   console.error(err);
-  const msg = err?.code === '42501' ? 'Keine Berechtigung (evtl. nur Leserecht).' : err?.code === '23505' ? 'Diese Nummer gibt es bei dir schon – bitte eine andere wählen.' : err?.code === '23503' ? 'Verknüpfung nicht erlaubt (gehört zu einem anderen Konto).' : (err?.message || err);
-  toast('Fehler: ' + msg, 5000);
+  toast(friendlyError(err), 5000);
 }
 // Wessen Daten werden angezeigt? Normal: eigene. Admin kann andere Konten ansehen.
 const owner = () => state.viewUid || state.user.id;
@@ -171,7 +191,7 @@ function renderChrome(mode) {
   }
   ban.innerHTML = `<label class="switch">Sammlung:
       <select id="sammlung"><option value="">📁 Meine Sammlung</option>${shared.map(f => `<option value="${f.owner_id}" ${f.owner_id === state.viewUid ? 'selected' : ''}>👥 ${esc(f.owner_email)}</option>`).join('')}</select></label>
-    ${state.viewKind === 'share' ? `<span class="badge ${ro ? 'orange' : 'green'}">${ro ? '👁️ nur lesen' : '✏️ bearbeiten'}</span>` : ''}`;
+    ${state.viewKind === 'share' ? `<span class="badge ${ro ? 'orange' : 'green'}">${ro ? '👁️ nur ansehen' : '✏️ ansehen und ändern'}</span>` : ''}`;
   document.getElementById('sammlung').onchange = e => {
     const f = shareOf(e.target.value);
     f ? viewAsShare(f) : viewAs(null);
@@ -207,7 +227,7 @@ function renderLogin() {
   document.getElementById('loginForm').onsubmit = async e => {
     e.preventDefault();
     const { error } = await sb.auth.signInWithPassword({ email: em(), password: pw() });
-    if (error) toast(error.message.includes('Invalid') ? 'E-Mail oder Passwort falsch.' : error.message.includes('confirmed') ? 'Bitte zuerst die E-Mail bestätigen (Link im Postfach).' : 'Fehler: ' + error.message, 5000);
+    if (error) toast(error.message.includes('Invalid') ? 'E-Mail oder Passwort falsch.' : error.message.includes('confirmed') ? 'Bitte zuerst die E-Mail bestätigen (Link im Postfach).' : friendlyError(error), 5000);
   };
   document.getElementById('signupBtn').onclick = async () => {
     if (!em() || pw().length < 6) return toast('Bitte E-Mail und ein Passwort (mind. 6 Zeichen) eingeben.');
@@ -444,7 +464,7 @@ function teilForm(t) {
       if (!row.teile_nr && !row.beschreibung && !file) throw new Error('Bitte mindestens Teile-Nr., Beschreibung oder Foto angeben.');
       const oldPath = t.bild_url;
       if (file) {
-        toast('Foto wird hochgeladen …', 10000);
+        toast('Foto wird gespeichert …', 10000);
         const blob = await shrinkImage(file);
         const path = `${owner()}/teile/${crypto.randomUUID()}.${blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase()}`;
         const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
@@ -659,10 +679,10 @@ function viewStats() {
       <div class="stat"><b>${num(ohneKiste)}</b>Teile ohne Kiste</div>
     </div>
     ${topK.length ? `<h2>Wertvollste Kisten</h2><div class="list">${topK.map(x => `<a class="item" href="#kiste/${x.k.id}"><div class="thumb">📦</div><div class="info"><div class="title">${esc(kisteLabel(x.k))}</div><div class="sub">${num(x.stueck)} Stück</div></div><div class="right">${euro(x.wert)}</div></a>`).join('')}</div>` : ''}
-    <h2>Import &amp; Export</h2>
-    <div class="card"><a class="btn block secondary" href="#import">📥 Excel/CSV importieren</a>
+    <h2>Daten übernehmen &amp; sichern</h2>
+    <div class="card"><a class="btn block secondary" href="#import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
-      <button class="btn block" id="csv">⬇️ CSV herunterladen</button></div>
+      <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button></div>
     <p class="muted center" style="font-size:.85rem">Angemeldet als ${esc(state.user.email)}</p>`;
   document.getElementById('csv').onclick = exportCsv;
 }
@@ -758,7 +778,7 @@ function productSuggest(name, excludeId) {
 const ortById = id => vstate.orte.find(o => o.id === Number(id));
 const ortUrl = id => baseUrl() + '#v/ort/' + id;
 const dec = n => (Number(n) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
-const parseDec = v => { v = String(v ?? '').trim().replace(/\s|€/g, '').replace(',', '.'); if (v === '') return null; const n = Number(v); if (isNaN(n)) throw new Error('„' + v + '“ ist keine Zahl.'); return n; };
+const parseDec = v => { v = String(v ?? '').trim().replace(/\s|€/g, '').replace(',', '.'); if (v === '') return null; const n = Number(v); if (isNaN(n)) throw new Error('„' + v + '“ ist keine gültige Zahl. Bitte z.B. 1,5 eingeben.'); return n; };
 function mhdDays(it) { if (!it.mhd) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(it.mhd + 'T00:00:00') - t) / 864e5); }
 const mhdState = it => { const d = mhdDays(it); return d == null ? '' : d < 0 ? 'bad' : d <= 14 ? 'warn' : ''; };
 const isLow = it => it.mindestbestand != null && Number(it.menge) < Number(it.mindestbestand);
@@ -1326,7 +1346,7 @@ function vForm(id) {
       }
       const oldPath = it.bild_url;
       if (file) {
-        toast('Foto wird hochgeladen …', 10000);
+        toast('Foto wird gespeichert …', 10000);
         const blob = await shrinkImage(file);
         const path = `${owner()}/vorrat/${crypto.randomUUID()}.jpg`;
         const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
@@ -1508,11 +1528,11 @@ function vStats() {
       <div class="stat"><b>${num(vstate.orte.length)}</b>Orte</div>
     </div>
     ${soon.length ? `<h2>Bald verbrauchen</h2><div id="list" class="list">${soon.map(vItem).join('')}</div>` : ''}
-    <h2>Import, Export &amp; Angebote</h2>
+    <h2>Daten &amp; Angebote</h2>
     <div class="card">
-      <a class="btn block secondary" href="#v/import">📥 Excel/CSV importieren</a>
+      <a class="btn block secondary" href="#v/import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
-      <button class="btn block" id="csv">⬇️ CSV herunterladen</button>
+      <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#v/plz">📍 PLZ &amp; Märkte in der Nähe</a>
     </div>`;
@@ -1631,7 +1651,7 @@ async function viewAdmin() {
 // ---------- Teilen & Zusammenführen ----------
 // =====================================================================
 const BEREICH_TXT = { playmobil: '🧸 Playmobil', vorrat: '🥫 Vorratskammer', lego: '🧱 LEGO', beide: '🧸+🥫 Playmobil+Vorrat', alle: '📦 alle Bereiche' };
-const RECHT_TXT = { lesen: '👁️ nur lesen', bearbeiten: '✏️ bearbeiten' };
+const RECHT_TXT = { lesen: '👁️ nur ansehen', bearbeiten: '✏️ ansehen und ändern' };
 
 function confirmDialog(title, html, ok = 'OK', danger = false) {
   const p = dialog(`<form><h2 style="margin-top:0">${title}</h2><div>${html}</div>
@@ -1719,13 +1739,13 @@ async function viewTeilen(section) {
     <h2>Meine ${sTxt} teilen</h2>
     <form class="card" id="invForm">
       <label>E-Mail der Person (braucht ein eigenes Konto)</label><input name="email" type="email" required placeholder="name@beispiel.de">
-      <div class="grid2"><div><label>Recht</label><select name="recht"><option value="lesen">👁️ nur lesen</option><option value="bearbeiten">✏️ bearbeiten</option></select></div>
+      <div class="grid2"><div><label>Was darf die Person?</label><select name="recht"><option value="lesen">👁️ nur ansehen</option><option value="bearbeiten">✏️ ansehen und ändern</option></select></div>
       <div><label>Bereich</label><select name="bereich">${bereichOpts}</select></div></div>
       <div style="height:.8rem"></div><button class="btn block">📨 Einladen</button>
     </form>
     ${mine.length ? `<div class="list">${mine.map(f => `<div class="card" style="margin:0">
       <b style="overflow-wrap:anywhere">${esc(f.member_email)}</b> ${f.status === 'eingeladen' ? '<span class="badge orange">eingeladen</span>' : '<span class="badge green">hat Zugriff</span>'} <span class="badge">${BEREICH_TXT[f.bereich]}</span>
-      <div class="row" style="margin-top:.5rem"><select data-a="recht" data-id="${f.id}" style="flex:1"><option value="lesen" ${f.recht === 'lesen' ? 'selected' : ''}>👁️ nur lesen</option><option value="bearbeiten" ${f.recht === 'bearbeiten' ? 'selected' : ''}>✏️ bearbeiten</option></select>
+      <div class="row" style="margin-top:.5rem"><select data-a="recht" data-id="${f.id}" style="flex:1"><option value="lesen" ${f.recht === 'lesen' ? 'selected' : ''}>👁️ nur ansehen</option><option value="bearbeiten" ${f.recht === 'bearbeiten' ? 'selected' : ''}>✏️ ansehen und ändern</option></select>
       <button class="btn small danger" data-a="revoke" data-id="${f.id}">Zugriff entziehen</button></div></div>`).join('')}</div>` : `<p class="muted">Du teilst deine ${sTxt} noch mit niemandem.</p>`}
 
     <h2>🔀 Sammlungen zusammenführen</h2>
@@ -1755,7 +1775,7 @@ async function viewTeilen(section) {
           const f = byId(state.shares, id); if (a === 'leave' && f && state.viewUid === f.owner_id) viewAs(null);
           toast(a === 'revoke' ? 'Zugriff entzogen.' : a === 'leave' ? 'Verlassen.' : 'Abgelehnt.');
         }
-        else if (a === 'recht') { const f = byId(state.shares, id); const { error } = await sb.rpc('freigabe_aendern', { p_id: id, p_bereich: f.bereich, p_recht: el.value }); if (error) throw error; toast('Recht geändert.'); }
+        else if (a === 'recht') { const f = byId(state.shares, id); const { error } = await sb.rpc('freigabe_aendern', { p_id: id, p_bereich: f.bereich, p_recht: el.value }); if (error) throw error; toast('Berechtigung geändert.'); }
         else if (a === 'view') { const sh = byId(state.shares, id); viewAsShare(sh); location.hash = sh.bereich === 'vorrat' || (sh.bereich === 'beide' && section === 'vorrat') ? '#v/liste' : sh.bereich === 'lego' ? '#l/teile' : sh.bereich?.startsWith('c:') ? '#c/' + sh.bereich.slice(2) : '#teile'; return; }
         else if (a === 'mno') { const { error } = await sb.rpc('zusammenfuehrung_ablehnen', { p_id: id }); if (error) throw error; toast('Anfrage abgelehnt.'); }
         else if (a === 'mdel') { const { error } = await sb.from('zusammenfuehrungen').delete().eq('id', id); if (error) throw error; }

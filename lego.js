@@ -274,9 +274,9 @@ function lStats() {
       <div class="stat"><b>${num(lstate.kisten.length)}</b>Kisten</div>
       <div class="stat"><b>${num(lstate.sets.length)}</b>Sets</div>
       <div class="stat"><b>${euro(wert)}</b>Wert</div></div>
-    <div class="card"><a class="btn block secondary" href="#l/import">📥 Excel/CSV importieren</a>
+    <div class="card"><a class="btn block secondary" href="#l/import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
-      <button class="btn block secondary" id="exp">📤 CSV exportieren</button>
+      <button class="btn block secondary" id="exp">📤 Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#l/rebrickable">🔑 Rebrickable-Einstellungen</a></div>`;
   document.getElementById('exp').onclick = () => {
@@ -296,10 +296,10 @@ async function lRebrickable() {
     <a class="back" href="#l/sets">‹ Sets</a>
     <h1>🔎 Rebrickable</h1>
     <div class="card">
-      <p class="muted" style="margin-top:0">Set-Suche über die öffentliche Rebrickable-API. Du brauchst einen <b>eigenen API-Key</b> (kostenlos unter
-        <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com/api</a>). Der Key wird nur in diesem Browser gespeichert – wir legen keinen Key für dich an.</p>
-      <label>Dein Rebrickable API-Key</label>
-      <input id="key" type="password" autocomplete="off" placeholder="key …" value="${esc(rebrickableKey())}">
+      <p class="muted" style="margin-top:0">Sets bei Rebrickable suchen. Dafür brauchst du einen <b>eigenen kostenlosen Zugangsschlüssel</b> von
+        <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com</a>. Der Schlüssel bleibt nur auf diesem Gerät – wir speichern keinen für dich.</p>
+      <label>Dein Rebrickable-Zugangsschlüssel</label>
+      <input id="key" type="password" autocomplete="off" placeholder="Schlüssel eintragen …" value="${esc(rebrickableKey())}">
       <button class="btn secondary block" id="saveKey" style="margin-top:.6rem">Speichern</button>
     </div>
     <div class="card">
@@ -307,17 +307,17 @@ async function lRebrickable() {
       <div class="row"><input id="q" style="flex:1" placeholder="z.B. 75192 oder Millennium Falcon"><button class="btn" id="go" style="background:#f9a825;color:#111">Suchen</button></div>
       <div id="res" style="margin-top:1rem"></div>
     </div>`;
-  document.getElementById('saveKey').onclick = () => { localStorage.setItem('rebrickableKey', document.getElementById('key').value.trim()); toast('Key gespeichert (nur lokal).'); };
+  document.getElementById('saveKey').onclick = () => { localStorage.setItem('rebrickableKey', document.getElementById('key').value.trim()); toast('Schlüssel gespeichert (nur auf diesem Gerät).'); };
   document.getElementById('go').onclick = async () => {
     const key = document.getElementById('key').value.trim() || rebrickableKey();
-    if (!key) return toast('Bitte zuerst einen API-Key eintragen.');
+    if (!key) return toast('Bitte zuerst den Zugangsschlüssel eintragen.');
     localStorage.setItem('rebrickableKey', key);
     const q = document.getElementById('q').value.trim(); if (!q) return;
     const res = document.getElementById('res'); res.innerHTML = '<p class="muted">Suche …</p>';
     try {
       const url = `https://rebrickable.com/api/v3/lego/sets/?search=${encodeURIComponent(q)}&page_size=20`;
       const r = await fetch(url, { headers: { Authorization: 'key ' + key } });
-      if (r.status === 401) throw new Error('API-Key ungültig.');
+      if (r.status === 401) throw new Error('Zugangsschlüssel ungültig. Bitte prüfen.');
       if (r.status === 429) throw new Error('Zu viele Anfragen – bitte kurz warten (ca. 1/Sekunde).');
       if (!r.ok) throw new Error('Rebrickable: HTTP ' + r.status);
       const data = await r.json();
