@@ -15,6 +15,14 @@ const app = document.getElementById('app');
 // ---------- Hilfsfunktionen ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const euro = n => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+/** Einzelpreis + Gesamt bei Menge > 1 (unit = Preis pro Stück/Packung). */
+const priceLine = (unit, qty) => {
+  if (unit == null || unit === '' || Number.isNaN(Number(unit))) return '';
+  const u = Number(unit), q = Number(qty) || 0;
+  if (q > 1) return `Einzelpreis: ${euro(u)} · Gesamt: ${euro(u * q)}`;
+  return euro(u);
+};
+const priceLineHtml = (unit, qty) => { const t = priceLine(unit, qty); return t ? `<div class="sub price">${esc(t)}</div>` : ''; };
 const num = n => (Number(n) || 0).toLocaleString('de-DE');
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const baseUrl = () => location.origin + location.pathname;
@@ -254,7 +262,7 @@ function teilItem(t) {
     <div class="info"><div class="title">${esc(teilTitle(t))}</div>
     <div class="sub">${t.teile_nr ? 'Nr. ' + esc(t.teile_nr) + ' · ' : ''}${dot(t.farbe)}${esc(t.farbe || '')}</div>
     <div class="sub">${k ? '📦 ' + esc(kisteLabel(k)) : ''}${sets.length ? ' · 🏰 ' + esc(sets.map(s => s.set_nummer).join(', ')) : ''}</div></div>
-    <div class="right">${num(t.anzahl)}×${t.euro != null ? `<div class="sub">${euro(t.euro)}</div>` : ''}</div></a>`;
+    <div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`;
 }
 
 function viewTeile() {
@@ -302,7 +310,7 @@ function viewTeil(id) {
         <dt>Teile-Nr.</dt><dd>${esc(t.teile_nr || '–')}</dd>
         <dt>Farbe</dt><dd>${dot(t.farbe)}${esc(t.farbe || '–')}</dd>
         <dt>Anzahl</dt><dd>${num(t.anzahl)}</dd>
-        <dt>Wert (Euro)</dt><dd>${t.euro != null ? euro(t.euro) + (t.anzahl > 1 ? ` <span class="muted">(gesamt ${euro(t.euro * t.anzahl)})</span>` : '') : '–'}</dd>
+        <dt>Preis</dt><dd>${t.euro != null ? esc(priceLine(t.euro, t.anzahl)) : '–'}</dd>
         <dt>In Kiste</dt><dd>${k ? `<a href="#kiste/${k.id}">📦 ${esc(kisteLabel(k))}</a>` : '–'}</dd>
         <dt>Sets</dt><dd>${teilSets(t).map(s => `<a class="badge" href="#set/${s.id}">${esc(setLabel(s))}</a>`).join('') || '–'}</dd>
         ${t.notiz ? `<dt>Notiz</dt><dd>${esc(t.notiz)}</dd>` : ''}
@@ -349,7 +357,7 @@ function teilForm(t) {
       <label for="beschr">Beschreibung</label><input id="beschr" value="${esc(t.beschreibung)}" placeholder="z.B. Ritterhelm mit Visier">
       <div class="grid2">
         <div><label for="anz">Anzahl</label><input id="anz" type="number" min="0" step="1" inputmode="numeric" value="${esc(t.anzahl ?? 1)}"></div>
-        <div><label for="eur">Euro (pro Stück)</label><input id="eur" type="text" inputmode="decimal" value="${t.euro != null ? String(t.euro).replace('.', ',') : ''}" placeholder="0,00"></div>
+        <div><label for="eur">Einzelpreis (€ / Stück)</label><input id="eur" type="text" inputmode="decimal" value="${t.euro != null ? String(t.euro).replace('.', ',') : ''}" placeholder="0,00"><div id="eurPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
       </div>
       <label for="kiste">In Kiste / Tüte</label>
       <div class="row"><select id="kiste" class="grow" style="flex:1"></select><button type="button" class="btn small secondary" id="newKiste">＋ Neu</button></div>
@@ -372,6 +380,18 @@ function teilForm(t) {
   document.getElementById('newSet').onclick = async () => { const s = await setDialog(); if (s) { chosenSets.push(s.id); fillSets(); } };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const updEurPrev = () => {
+    const el = document.getElementById('eurPrev'); if (!el) return;
+    try {
+      const raw = document.getElementById('eur').value.trim().replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+      const u = raw === '' ? null : Number(raw);
+      const q = Math.max(0, parseInt(document.getElementById('anz').value, 10) || 0);
+      el.textContent = u != null && !isNaN(u) ? priceLine(u, q) : '';
+    } catch { el.textContent = ''; }
+  };
+  document.getElementById('eur').oninput = updEurPrev;
+  document.getElementById('anz').oninput = updEurPrev;
+  updEurPrev();
 
   async function save(more) {
     const btns = app.querySelectorAll('button[type=submit],#saveMore'); btns.forEach(b => b.disabled = true);
@@ -695,7 +715,8 @@ function vItem(it) {
     <a class="info" href="#v/artikel/${it.id}" style="display:flex;gap:.6rem;align-items:center">${imgUrl(it) ? thumb(it) : '<div class="thumb">🥫</div>'}
       <div style="min-width:0;flex:1"><div class="title">${esc(it.name)}</div>
       <div class="sub">${esc(it.kategorie || '')}${o ? ' · 📍 ' + esc(o.name) : ''}</div>
-      <div>${mhdText(it)}${lotHint}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div></div></a>
+      <div>${mhdText(it)}${lotHint}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div>
+      ${it.preis != null ? `<div class="sub price">${esc(priceLine(it.preis, it.menge))}</div>` : ''}</div></a>
     <div class="qty"><button type="button" data-d="-1" aria-label="weniger">−</button>
       <div class="n">${dec(it.menge)}<small>${esc(it.einheit || '')}</small></div>
       <button type="button" data-d="1" aria-label="mehr">+</button>
@@ -828,7 +849,7 @@ function vForm(id) {
       <datalist id="einliste">${EINHEITEN.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
       <div class="grid2">
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
-        <div><label for="preis">Preis (€ pro Einheit)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"></div>
+        <div><label for="preis">Einzelpreis (€ pro Packung/Stück)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"><div id="preisPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
       </div>
       ${isNew ? `<div class="grid2"><div><label for="menge">Menge (erste Charge)</label><input id="menge" inputmode="decimal" value="${decIn(it.menge)}"></div>
         <div><label for="mhd">MHD</label><input id="mhd" type="date" value="${esc(it.mhd || '')}"></div></div>`
@@ -861,6 +882,18 @@ function vForm(id) {
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
   const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
+  const updPreisPrev = () => {
+    const el = document.getElementById('preisPrev'); if (!el) return;
+    try {
+      const u = parseDec(document.getElementById('preis').value);
+      const qEl = document.getElementById('menge');
+      const q = qEl ? (parseDec(qEl.value) ?? 0) : Number(it.menge) || 0;
+      el.textContent = u != null ? priceLine(u, q) : '';
+    } catch { el.textContent = ''; }
+  };
+  document.getElementById('preis').oninput = updPreisPrev;
+  const mengeEl = document.getElementById('menge'); if (mengeEl) mengeEl.oninput = updPreisPrev;
+  updPreisPrev();
   function renderChargen() {
     const box = document.getElementById('chargenList'); if (!box) return;
     const lots = vstate.chargen[it.id] || [];

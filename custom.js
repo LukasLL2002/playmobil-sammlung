@@ -152,10 +152,14 @@ function cListe(b) {
     document.getElementById('count').textContent = `${num(res.length)} von ${num(items.length)}`;
     list.innerHTML = res.map(it => {
       const o = orte.find(x => x.id === it.ort_id);
-      const sub = felder.slice(0, 3).map(fd => { const v = (it.data || {})[fd.schluessel]; return v ? esc(fd.label) + ': ' + esc(v) : ''; }).filter(Boolean).join(' · ');
+      const euroF = felder.find(fd => fd.typ === 'euro');
+      const unit = euroF ? parseFloat(String((it.data || {})[euroF.schluessel] ?? '').replace(',', '.')) : null;
+      const unitOk = unit != null && !isNaN(unit);
+      const sub = felder.filter(fd => fd.typ !== 'euro').slice(0, 3).map(fd => { const v = (it.data || {})[fd.schluessel]; return v ? esc(fd.label) + ': ' + esc(v) : ''; }).filter(Boolean).join(' · ');
       return `<a class="card item" href="#c/${b.id}/eintrag/${it.id}">${imgUrl(it) ? thumb(it) : `<div class="thumb">${esc(b.icon)}</div>`}
         <div class="info"><div class="title">${esc(it.name)}</div>
-        <div class="sub">${o ? '📍 ' + esc(o.name) + (sub ? ' · ' : '') : ''}${sub}</div></div>
+        <div class="sub">${o ? '📍 ' + esc(o.name) + (sub ? ' · ' : '') : ''}${sub}</div>
+        ${unitOk ? `<div class="sub price">${esc(priceLine(unit, it.anzahl))}</div>` : ''}</div>
         <div class="right"><b>${dec(it.anzahl)}</b></div></a>`;
     }).join('') || (items.length ? '<div class="card center muted">Nichts gefunden.</div>'
       : `<div class="card center"><p>Noch keine Einträge.</p><a class="btn" href="#c/${b.id}/eintrag/neu" style="background:${esc(b.farbe)}">＋ Ersten anlegen</a></div>`);
@@ -199,6 +203,22 @@ function cForm(b, id) {
     </form>`;
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const euroFields = [...app.querySelectorAll('[data-fk]')].filter(el => {
+    const fd = felder.find(f => f.schluessel === el.dataset.fk); return fd && fd.typ === 'euro';
+  });
+  if (euroFields.length) {
+    let prev = document.getElementById('cPreisPrev');
+    if (!prev) { prev = document.createElement('div'); prev.id = 'cPreisPrev'; prev.className = 'muted'; prev.style.cssText = 'font-size:.85rem;margin:.4rem 0'; document.getElementById('anz').after(prev); }
+    const upd = () => {
+      const fd = felder.find(f => f.typ === 'euro');
+      const el = app.querySelector(`[data-fk="${fd.schluessel}"]`);
+      const u = el ? parseFloat(String(el.value).replace(',', '.')) : null;
+      const q = parseDec(document.getElementById('anz').value) ?? 0;
+      prev.textContent = u != null && !isNaN(u) ? priceLine(u, q) : '';
+    };
+    euroFields.forEach(el => el.oninput = upd);
+    document.getElementById('anz').oninput = upd; upd();
+  }
   const del = document.getElementById('del');
   if (del) del.onclick = async () => {
     if (!confirm('Löschen?')) return;

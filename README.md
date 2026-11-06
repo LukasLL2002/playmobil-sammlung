@@ -26,3 +26,7 @@ Statische Seite (HTML/CSS/JS) mit Supabase als Backend. Im Code steht nur der ö
 - **LEGO**: eigener Bereich (Kisten/Sets/Teile), Import/Export; optionale Rebrickable-Set-Suche mit **eigenem** API-Key (nur lokal gespeichert).
 - **Eigene Bereiche**: ＋ in der Modebar → Name/Icon/Farbe/Vorlage, konfigurierbare Felder, Orte, Import, Teilen (`c:<uuid>`).
 - **Angebote**: PLZ nur lokal; Ort via Nominatim; Deep-Links „Angebote beim Anbieter ansehen“ (MeinProspekt/kaufDA/Marktguru). Die App zeigt und importiert **keine** Preise – aktuell nur auf der Anbieter-Seite. Optional Märkte-Open-Data (ohne Preise).
+
+## Preise & manuelle Angebote
+- Listen/Details zeigen bei Menge > 1: `Einzelpreis: … · Gesamt: …` (Playmobil `euro`, LEGO `euro`, Vorrat `preis`×`menge`, Custom-Euro-Feld×Anzahl).
+- Vorrat → 🛒: **Bestes gespeichertes Angebot** aus von dir erfassten Einträgen (`vorrat_angebote`); plus „Im Prospekt prüfen“. Kein Live-Preis-Feed.

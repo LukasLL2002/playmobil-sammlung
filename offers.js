@@ -1,8 +1,8 @@
-// Angebote in der Nähe – nur Deep-Links + Open-Data-Märkte, kein Flyer-Scraping
+// Angebote – PLZ lokal, Märkte Open-Data, manuell erfasste Angebote, Prospekt-Deep-Links
 'use strict';
 
 const PLZ_KEY = 'vorratPlz';
-const CITY_CACHE_KEY = 'vorratCityCache'; // { plz: { city, lat, lon, slug, ts } }
+const CITY_CACHE_KEY = 'vorratCityCache';
 
 function getPlz() { return (localStorage.getItem(PLZ_KEY) || '').replace(/\D/g, '').slice(0, 5); }
 function setPlz(plz) { localStorage.setItem(PLZ_KEY, String(plz || '').replace(/\D/g, '').slice(0, 5)); }
@@ -17,22 +17,12 @@ function cityTitle(name) {
   return String(name || '').split(/[\s-]+/).filter(Boolean)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('-');
 }
-
 function productSlug(term) {
   return String(term || '').toLowerCase()
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 }
-
-/** Kurzer Suchbegriff aus Name/Kategorie (erste 1–3 sinnvolle Wörter). */
-function offerSearchTerm(it) {
-  const raw = (it.name || it.kategorie || '').trim();
-  const stop = new Set(['und', 'oder', 'der', 'die', 'das', 'mit', 'ohne', 'bio', 'von', 'für']);
-  const words = raw.split(/[\s,/|]+/).filter(w => w && !stop.has(w.toLowerCase()) && !/^\d/.test(w));
-  return (words.slice(0, 3).join(' ') || raw).slice(0, 40);
-}
-
 function readCityCache() {
   try { return JSON.parse(localStorage.getItem(CITY_CACHE_KEY) || '{}'); } catch { return {}; }
 }
@@ -52,19 +42,6 @@ async function resolvePlz(plz) {
   const city = a.city || a.town || a.village || a.municipality || a.county || data[0].display_name.split(',')[0];
   const info = { city, lat: data[0].lat, lon: data[0].lon, slug: citySlug(city), title: cityTitle(city), ts: Date.now() };
   cache[plz] = info; writeCityCache(cache); return info;
-}
-
-function offerLinks(it, cityInfo) {
-  const term = offerSearchTerm(it);
-  const pslug = productSlug(term);
-  const q = encodeURIComponent(term);
-  const city = cityInfo.slug;
-  const cityTc = cityInfo.title || cityTitle(cityInfo.city);
-  return [
-    { name: 'MeinProspekt', url: `https://www.meinprospekt.de/${city}/angebote/${pslug}`, note: 'Prospekt-Suche (externe Seite)' },
-    { name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(term.replace(/\s+/g, '-'))}`, note: 'Angebote vor Ort (externe Seite)' },
-    { name: 'Marktguru', url: `https://www.marktguru.de/search/${q}`, note: 'Suche (externe Seite)' },
-  ];
 }
 
 function viewPlzSettings() {
@@ -89,7 +66,7 @@ function viewPlzSettings() {
     const v = document.getElementById('plz').value.trim();
     try {
       const info = await resolvePlz(v); setPlz(v);
-      document.getElementById('info').innerHTML = `<span class="badge green">Ort: ${esc(info.city)}</span>`;
+      document.getElementById('info').innerHTML = `<span class="badge green">${esc(info.city)}</span>`;
       toast('PLZ gespeichert: ' + info.city);
     } catch (e) { fail(e); }
   };
@@ -108,8 +85,7 @@ async function loadMaerkte(el) {
     const r = await fetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const list = Array.isArray(data) ? data
-      : (data.records || data.results || data.stores || data.data || []);
+    const list = Array.isArray(data) ? data : (data.records || data.results || data.stores || data.data || []);
     if (!list.length) { el.innerHTML = '<p class="muted">Keine Märkte gefunden.</p>'; return; }
     el.innerHTML = `<div class="list">${list.slice(0, 20).map(m => {
       const name = m.name || m.title || m.store || m.trade_label || 'Markt';
@@ -128,25 +104,129 @@ async function loadMaerkte(el) {
   }
 }
 
-/** Dialog: Angebote beim Anbieter ansehen – nur Deep-Links, keine Preise in der App. */
-async function openAngebote(it) {
-  let plz = getPlz();
-  if (plz.length !== 5) {
-    const typed = prompt('Deine PLZ (5 Stellen, nur lokal gespeichert):', '');
-    if (typed == null) return;
-    try { await resolvePlz(typed); setPlz(typed); plz = getPlz(); }
-    catch (e) { return fail(e); }
-  }
-  let info;
-  try { info = await resolvePlz(plz); } catch (e) { return fail(e); }
+function offerSearchTerm(it) {
+  const ean = String(it.barcode || '').replace(/\D/g, '');
+  if (ean.length >= 8) return ean;
+  const raw = (it.name || it.kategorie || '').trim();
+  const stop = new Set(['und', 'oder', 'der', 'die', 'das', 'mit', 'ohne', 'bio', 'von', 'für']);
+  const words = raw.split(/[\s,/|]+/).filter(w => w && !stop.has(w.toLowerCase()) && !/^\d/.test(w));
+  return (words.slice(0, 3).join(' ') || raw).slice(0, 40);
+}
+
+function offerLinks(it, cityInfo) {
   const term = offerSearchTerm(it);
-  const links = offerLinks(it, info);
-  const html = `<form><h2 style="margin-top:0">🛒 ${esc(term)} · ${esc(info.city)}</h2>
-    <p class="muted">PLZ bleibt auf dem Gerät. App öffnet die Anbietersuche – Preise und Gültigkeit auf der Anbieter-Seite.</p>
-    <div class="list">${links.map(l => `<a class="btn block secondary" style="margin:.3rem 0;text-align:left" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)} ↗</a>`).join('')}</div>
-    <div class="row" style="margin-top:1rem"><button type="button" class="btn secondary grow" data-cancel>Schließen</button>
-      <a class="btn grow" href="#v/plz" style="text-align:center;background:#2e7d32">PLZ</a></div></form>`;
+  const pslug = productSlug(term);
+  const q = encodeURIComponent(term);
+  const city = cityInfo.slug;
+  const cityTc = cityInfo.title || cityTitle(cityInfo.city);
+  return [
+    { name: 'Marktguru', primary: true, url: `https://www.marktguru.de/search/${q}` },
+    { name: 'MeinProspekt', url: `https://www.meinprospekt.de/${city}/angebote/${pslug}` },
+    { name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(String(term).replace(/\s+/g, '-'))}` },
+  ];
+}
+
+const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0, 10); };
+const isActiveOffer = o => o.gueltig_ab <= todayISO() && o.gueltig_bis >= todayISO();
+const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('de-DE') : '–';
+
+async function loadAngebote(vorratId) {
+  const { data, error } = await sb.from('vorrat_angebote').select('*').eq('vorrat_id', vorratId).order('preis');
+  if (error) throw error;
+  return data || [];
+}
+
+function bestAngebot(list) {
+  const aktiv = list.filter(isActiveOffer).sort((a, b) => Number(a.preis) - Number(b.preis) || a.gueltig_bis.localeCompare(b.gueltig_bis));
+  return aktiv[0] || null;
+}
+
+/** Dialog: bestes gespeichertes Angebot + erfassen + Prospekt-Links */
+async function openAngebote(it) {
+  if (!it?.id) return toast('Bitte Artikel zuerst speichern.');
+  let plz = getPlz();
+  let info = null;
+  if (plz.length === 5) {
+    try { info = await resolvePlz(plz); } catch { info = null; }
+  }
+  let list = [];
+  try { list = await loadAngebote(it.id); } catch (e) { fail(e); }
+
+  const render = () => {
+    const best = bestAngebot(list);
+    const aktiv = list.filter(isActiveOffer);
+    const alt = list.filter(o => !isActiveOffer(o));
+    const links = info ? offerLinks(it, info) : [];
+    const primary = links.find(l => l.primary) || links[0];
+    const d = dialog.current;
+    if (!d) return;
+    d.querySelector('#aoBody').innerHTML = `
+      ${best ? `<div class="best-offer">
+        <div style="font-size:.8rem;font-weight:700;color:#1b5e20">⭐ Bestes gespeichertes Angebot</div>
+        <div style="font-size:1.15rem;font-weight:700;margin:.2rem 0">${euro(best.preis)} <span class="muted" style="font-size:.85rem;font-weight:500">bei ${esc(best.markt)}</span></div>
+        <div class="muted" style="font-size:.85rem">gültig ${esc(fmtDate(best.gueltig_ab))} – ${esc(fmtDate(best.gueltig_bis))} · Von dir erfasst</div>
+        ${best.notiz ? `<div class="muted" style="font-size:.85rem">${esc(best.notiz)}</div>` : ''}
+        ${best.quelle_url ? `<a class="btn small secondary" href="${esc(best.quelle_url)}" target="_blank" rel="noopener">Quelle / Beleg ↗</a>` : ''}
+      </div>` : `<p class="muted">Noch kein gültiges Angebot gespeichert. Im Prospekt prüfen und hier eintragen.</p>`}
+
+      ${primary ? `<a class="btn block" style="background:#2e7d32;margin:.4rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">Im Prospekt prüfen (${esc(primary.name)}) ↗</a>
+        <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem">${links.filter(l => l !== primary).map(l => `<a class="btn small secondary" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join('')}${!info ? '<a class="btn small secondary" href="#v/plz">PLZ setzen</a>' : ''}</div>`
+        : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, dann Prospekt-Links nutzen.</p>`}
+
+      <details ${!best ? 'open' : ''}><summary><b>＋ Angebot erfassen</b> <span class="muted">(von dir, kein Live-Preis)</span></summary>
+        <div style="margin-top:.6rem">
+          <label>Markt / Laden</label><input id="aoMarkt" required placeholder="z.B. REWE, Aldi">
+          <div class="grid2"><div><label>Preis (€)</label><input id="aoPreis" inputmode="decimal" required placeholder="1,29"></div>
+            <div><label>Gültig bis</label><input id="aoBis" type="date" required value="${esc(todayISO())}"></div></div>
+          <div class="grid2"><div><label>Gültig ab</label><input id="aoAb" type="date" value="${esc(todayISO())}"></div>
+            <div><label>Link (optional)</label><input id="aoUrl" type="url" placeholder="https://…"></div></div>
+          <label>Notiz (optional)</label><input id="aoNotiz" placeholder="z.B. 500g Packung">
+          <button type="button" class="btn block" id="aoSave" style="margin-top:.6rem;background:#2e7d32">Speichern</button>
+        </div></details>
+
+      ${aktiv.length || alt.length ? `<h3 style="margin:1rem 0 .4rem">Gespeicherte Angebote</h3>
+        <div class="list">${[...aktiv, ...alt].map(o => `<div class="card" style="margin:0" data-oid="${o.id}">
+          <b>${euro(o.preis)}</b> · ${esc(o.markt)} ${isActiveOffer(o) ? '<span class="badge green">gültig</span>' : '<span class="badge orange">abgelaufen</span>'}
+          <div class="sub muted">${esc(fmtDate(o.gueltig_ab))} – ${esc(fmtDate(o.gueltig_bis))} · Von dir erfasst</div>
+          <button type="button" class="btn small danger" data-del-o="${o.id}">🗑️</button>
+        </div>`).join('')}</div>` : ''}`;
+
+    d.querySelector('#aoSave')?.addEventListener('click', async () => {
+      try {
+        const markt = d.querySelector('#aoMarkt').value.trim();
+        const preis = parseDec(d.querySelector('#aoPreis').value);
+        const gueltig_bis = d.querySelector('#aoBis').value;
+        const gueltig_ab = d.querySelector('#aoAb').value || todayISO();
+        if (!markt || preis == null || !gueltig_bis) throw new Error('Markt, Preis und Gültig-bis sind nötig.');
+        if (gueltig_bis < gueltig_ab) throw new Error('„Gültig bis“ liegt vor „Gültig ab“.');
+        const row = {
+          vorrat_id: it.id, user_id: owner(), markt, preis,
+          gueltig_ab, gueltig_bis,
+          quelle_url: d.querySelector('#aoUrl').value.trim() || null,
+          notiz: d.querySelector('#aoNotiz').value.trim() || null,
+        };
+        const { data, error } = await sb.from('vorrat_angebote').insert(row).select().single();
+        if (error) throw error;
+        list = [...list, data];
+        toast('Angebot gespeichert.');
+        render();
+      } catch (e) { fail(e); }
+    });
+    d.querySelectorAll('[data-del-o]').forEach(btn => btn.onclick = async () => {
+      if (!confirm('Angebot löschen?')) return;
+      const id = Number(btn.dataset.delO);
+      const { error } = await sb.from('vorrat_angebote').delete().eq('id', id);
+      if (error) return fail(error);
+      list = list.filter(x => x.id !== id);
+      toast('Gelöscht.'); render();
+    });
+  };
+
+  const html = `<form><h2 style="margin-top:0">🛒 ${esc(it.name)}</h2>
+    <div id="aoBody"></div>
+    <div class="row" style="margin-top:1rem"><button type="button" class="btn secondary grow" data-cancel>Schließen</button></div></form>`;
   const p = dialog(html);
   dialog.current._save = async () => true;
+  render();
   return p;
 }

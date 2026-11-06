@@ -70,7 +70,7 @@ function lTeile() {
         <div class="info"><div class="title">${esc(lteilTitle(t))}</div>
         <div class="sub">${t.teile_nr ? esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}${k ? ' · 📦 ' + esc(lkisteLabel(k)) : ''}</div>
         <div class="sub">${lteilSets(t).map(s => '🏰 ' + esc(lsetLabel(s))).join(' · ')}</div></div>
-        <div class="right"><b>${num(t.anzahl)}×</b>${t.euro != null ? `<small>${euro(t.euro)}</small>` : ''}</div></a>`;
+        <div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`;
     }).join('') || (lstate.teile.length ? '<div class="card center muted">Nichts gefunden.</div>'
       : '<div class="card center"><p>Noch keine LEGO-Teile.</p><a class="btn" href="#l/teil/neu" style="background:#f9a825;color:#111">＋ Erstes Teil</a><div style="height:.5rem"></div><a class="btn secondary" href="#l/import">📥 Importieren</a></div>');
   };
@@ -95,7 +95,8 @@ function lTeil(id) {
       <a class="back" href="#l/teile">‹ Alle Teile</a>
       <div class="card">${u ? `<img class="photo" src="${esc(u)}" alt="">` : ''}<h1 style="margin-top:.4rem">${esc(lteilTitle(t))}</h1>
         <p>${t.teile_nr ? '<b>Nr.</b> ' + esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}</p>
-        <p>${k ? '📦 <a href="#l/kiste/' + k.id + '">' + esc(lkisteLabel(k)) + '</a>' : 'Ohne Kiste'} · <b>${num(t.anzahl)}×</b>${t.euro != null ? ' · ' + euro(t.euro) : ''}</p>
+        <p>${k ? '📦 <a href="#l/kiste/' + k.id + '">' + esc(lkisteLabel(k)) + '</a>' : 'Ohne Kiste'} · <b>${num(t.anzahl)}×</b></p>
+        ${t.euro != null ? `<p class="price">${esc(priceLine(t.euro, t.anzahl))}</p>` : ''}
         ${sets.length ? `<p>${sets.map(s => `<a class="badge" href="#l/set/${s.id}">🏰 ${esc(lsetLabel(s))}</a>`).join(' ')}</p>` : ''}
         ${t.notiz ? `<p class="muted">${esc(t.notiz)}</p>` : ''}
         <div class="row"><a class="btn grow" href="#l/teil/${t.id}:bearbeiten">✏️ Bearbeiten</a>
@@ -119,7 +120,7 @@ function lTeil(id) {
         <div><label>Farbe</label><input id="farbe" value="${esc(t.farbe)}"></div></div>
       <label>Beschreibung</label><input id="bes" value="${esc(t.beschreibung)}">
       <div class="grid2"><div><label>Anzahl</label><input id="anz" inputmode="numeric" value="${t.anzahl ?? 1}"></div>
-        <div><label>Euro / Stück</label><input id="euro" inputmode="decimal" value="${t.euro ?? ''}"></div></div>
+        <div><label>Einzelpreis (€ / Stück)</label><input id="euro" inputmode="decimal" value="${t.euro != null ? String(t.euro).replace('.', ',') : ''}"><div id="eurPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div></div>
       <label>Kiste</label><div class="row"><select id="kiste" style="flex:1"></select><button type="button" class="btn small secondary" id="nk">＋</button></div>
       <label>Sets</label><div id="setTags" class="row" style="flex-wrap:wrap"></div><select id="addSet"></select>
       <label>Foto</label><img id="prev" class="photo-preview ${u ? '' : 'hidden'}" src="${esc(u || '')}">
@@ -144,6 +145,17 @@ function lTeil(id) {
   };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const updEurPrev = () => {
+    const el = document.getElementById('eurPrev'); if (!el) return;
+    try {
+      const u = parseDec(document.getElementById('euro').value);
+      const q = Math.max(0, parseInt(document.getElementById('anz').value, 10) || 0);
+      el.textContent = u != null ? priceLine(u, q) : '';
+    } catch { el.textContent = ''; }
+  };
+  document.getElementById('euro').oninput = updEurPrev;
+  document.getElementById('anz').oninput = updEurPrev;
+  updEurPrev();
   document.getElementById('f').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -201,7 +213,7 @@ function lKiste(id) {
       <p class="muted">${k.ort ? '📍 ' + esc(k.ort) : ''} · ${num(teile.length)} Teile</p>
       <div class="row"><button class="btn small secondary" id="ek">✏️</button><button class="btn small danger" id="dk">🗑️</button></div></div>
     <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div>
-      <div class="sub">${t.teile_nr || ''} ${t.farbe ? '· ' + esc(t.farbe) : ''}</div></div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
+      <div class="sub">${t.teile_nr || ''} ${t.farbe ? '· ' + esc(t.farbe) : ''}</div></div><div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
     <a class="fab" href="#l/teil/neu" style="background:#f9a825;color:#111">＋</a>`;
   document.getElementById('ek').onclick = async () => {
     const name = prompt('Name', k.name || ''); if (name == null) return;
@@ -241,7 +253,7 @@ function lSet(id) {
     <div class="card"><h1>🏰 ${esc(lsetLabel(s))}</h1>
       <p class="muted">${s.jahr || ''}${s.teile_anzahl ? ' · ' + num(s.teile_anzahl) + ' Teile offiziell' : ''}</p>
       <div class="row"><button class="btn small secondary" id="es">✏️</button><button class="btn small danger" id="ds">🗑️</button></div></div>
-    <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div></div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Keine Teile verknüpft.</div>'}</div>`;
+    <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div></div><div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`).join('') || '<div class="card center muted">Keine Teile verknüpft.</div>'}</div>`;
   document.getElementById('es').onclick = async () => {
     const name = prompt('Name', s.name || ''); if (name == null) return;
     const { data, error } = await sb.from('lego_sets').update({ name: name || null }).eq('id', s.id).select().single();
