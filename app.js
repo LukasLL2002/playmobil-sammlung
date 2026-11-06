@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-13';
+const ASSET_V = '20261106-14';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -1168,10 +1168,9 @@ window.applyEntnahme = applyEntnahme;
 function vListe() {
   const f = vstate.filter;
   const kats = [...new Set([...KATEGORIEN, ...vstate.items.map(i => i.kategorie).filter(Boolean)])];
-  const scan = 'BarcodeDetector' in window;
   app.innerHTML = `
     <div class="row" style="margin-bottom:.6rem;flex-wrap:nowrap"><div class="search grow" style="flex:1;margin:0"><input id="q" type="search" placeholder="Vorrat durchsuchen …" value="${esc(f.q)}" autocomplete="off"></div>
-      ${scan ? '<button class="btn secondary" id="scan" title="Barcode scannen">▥</button>' : ''}</div>
+      <button class="btn secondary" id="scan" title="Barcode scannen">▥</button></div>
     <div class="filters">
       <select id="fKat"><option value="">Alle Kategorien</option>${kats.map(k => `<option ${k === f.kat ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
       <select id="fOrt"><option value="">Alle Orte</option><option value="none" ${f.ort === 'none' ? 'selected' : ''}>Ohne Ort</option>${vstate.orte.map(o => `<option value="${o.id}" ${String(o.id) === f.ort ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>
@@ -1195,31 +1194,284 @@ function vListe() {
   document.getElementById('fKat').onchange = e => { f.kat = e.target.value; render(); };
   document.getElementById('fOrt').onchange = e => { f.ort = e.target.value; render(); };
   document.getElementById('fNur').onchange = e => { f.nur = e.target.value; render(); };
-  if (scan) document.getElementById('scan').onclick = async () => {
+  document.getElementById('scan').onclick = async () => {
     const code = await scanBarcode(); if (!code) return;
-    const hit = vstate.items.find(i => i.barcode === code);
+    const hit = findVorratByBarcode(code);
     if (hit) location.hash = '#v/artikel/' + hit.id;
-    else if (confirm(`Barcode ${code} ist noch nicht erfasst. Neuen Artikel anlegen?`)) location.hash = '#v/artikel/neu?barcode=' + encodeURIComponent(code);
+    else location.hash = '#v/artikel/neu?barcode=' + encodeURIComponent(code);
   };
   render();
 }
 
-// Barcode per Kamera (BarcodeDetector, nur wo unterstützt)
+// ---------- Barcode / Open Food Facts ----------
+function normalizeBarcode(raw) {
+  return String(raw ?? '').replace(/[\s-]+/g, '').trim();
+}
+/** GTIN-8/12/13/14 mit Prüfziffer; Buchstaben und zufällige QR-Texte raus. */
+function isValidGtin(code) {
+  const s = normalizeBarcode(code);
+  if (!/^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(s)) return false;
+  const digits = s.split('').map(Number);
+  const check = digits.pop();
+  let sum = 0;
+  digits.reverse().forEach((d, i) => { sum += (i % 2 === 0) ? d * 3 : d; });
+  return ((10 - (sum % 10)) % 10) === check;
+}
+function findVorratByBarcode(code) {
+  const c = normalizeBarcode(code);
+  if (!c) return null;
+  return vstate.items.find(i => normalizeBarcode(i.barcode) === c) || null;
+}
+
+async function ensureZXing() {
+  if (window.ZXing?.BrowserMultiFormatReader) return window.ZXing;
+  await loadScript('vendor/zxing/index.min.js?v=0.21.3');
+  if (!window.ZXing?.BrowserMultiFormatReader) throw new Error('Barcode-Scanner ist gerade nicht verfügbar.');
+  return window.ZXing;
+}
+
+/**
+ * Open Food Facts (ODbL) – öffentliche Produkt-API, kein Key.
+ * Browser darf keinen eigenen User-Agent setzen; Accept + fields reichen.
+ */
+async function lookupOpenFoodFacts(ean) {
+  const code = normalizeBarcode(ean);
+  if (!isValidGtin(code)) return { ok: false, reason: 'invalid' };
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const url = 'https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code)
+      + '.json?fields=code,product_name,product_name_de,generic_name,quantity,brands,categories_tags';
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+    if (res.status === 404) return { ok: false, reason: 'notfound' };
+    if (!res.ok) throw new Error('off-http-' + res.status);
+    const data = await res.json();
+    if (!data || data.status !== 1 || !data.product) return { ok: false, reason: 'notfound' };
+    return { ok: true, product: data.product };
+  } catch (e) {
+    if (e && e.name === 'AbortError') return { ok: false, reason: 'timeout' };
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return { ok: false, reason: 'offline' };
+    return { ok: false, reason: 'network', error: e };
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+function offProductName(p) {
+  if (!p) return '';
+  const de = String(p.product_name_de || '').trim();
+  const en = String(p.product_name || '').trim();
+  const gen = String(p.generic_name || '').trim();
+  const brand = String(p.brands || '').split(',')[0].trim();
+  let name = de || en || gen;
+  if (!name && brand) name = brand;
+  else if (name && brand && !norm(name).includes(norm(brand))) name = brand + ' ' + name;
+  return name.trim();
+}
+
+function offCategoryFromTags(tags) {
+  const hay = (tags || []).join(' ').toLowerCase();
+  const rules = [
+    [/waters|mineral-waters|spring-waters|beverages|sodas|colas|juices|soft-drinks|teas|coffees|plant-milks/, 'Getränke'],
+    [/milks|yogurts|cheeses|dairy|cream|butters/, 'Milchprodukte'],
+    [/meats|sausages|poultries|hams/, 'Fleisch & Wurst'],
+    [/fishes|seafoods|salmons|tunas/, 'Fisch'],
+    [/breakfasts|spreads|cereals|honeys|jams|nutella/, 'Frühstück'],
+    [/pastas|noodles/, 'Nudeln'],
+    [/rices|flours|grains|quinoa|couscous/, 'Reis & Getreide'],
+    [/canned|preserves|pickles/, 'Konserven'],
+    [/frozen|ice-creams/, 'Tiefkühl'],
+    [/snacks|chips|crackers/, 'Snacks'],
+    [/sweets|chocolates|candies|biscuits|cookies/, 'Süßigkeiten'],
+    [/breads|bakery/, 'Brot & Backwaren'],
+    [/vegetables/, 'Gemüse'],
+    [/fruits/, 'Obst'],
+    [/spices|sauces|condiments|herbs/, 'Gewürze'],
+    [/baking|desserts|sugars/, 'Backen'],
+    [/cleaning|household/, 'Haushalt'],
+  ];
+  for (const [re, kat] of rules) if (re.test(hay)) return kat;
+  return null;
+}
+
+/** Menge/Einheit/Gebinde aus OFF-quantity (z.B. "1,5 L", "6x0,33l", "400 g"). */
+function parseOffQuantity(q) {
+  if (q == null || q === '') return null;
+  const s = String(q).trim().toLowerCase().replace(/,/g, '.').replace(/\s+/g, ' ');
+  let m = s.match(/(\d+)\s*[x×]\s*([\d.]+)\s*(l|liter|ml|cl|kg|g)\b/);
+  if (m) {
+    const n = Number(m[1]), amt0 = Number(m[2]);
+    let unit = m[3] === 'liter' ? 'l' : m[3];
+    let amt = amt0;
+    if (unit === 'cl') { amt = amt0 / 100; unit = 'l'; }
+    const pack = (unit === 'l' || unit === 'ml') ? 'Flasche' : 'Packung';
+    return { menge: n, einheit: pack, gebinde_inhalt: amt, basis_einheit: unit };
+  }
+  m = s.match(/([\d.]+)\s*(l|liter|ml|cl|kg|g)\b/);
+  if (!m) return null;
+  let amt = Number(m[1]);
+  let unit = m[2] === 'liter' ? 'l' : m[2];
+  if (unit === 'cl') { amt = amt / 100; unit = 'l'; }
+  if (unit === 'kg') return { menge: 1, einheit: 'kg', gebinde_inhalt: null, basis_einheit: null };
+  if (unit === 'g') {
+    if (amt >= 1000) return { menge: 1, einheit: 'kg', gebinde_inhalt: null, basis_einheit: null };
+    return { menge: 1, einheit: 'Packung', gebinde_inhalt: amt, basis_einheit: 'g' };
+  }
+  if (unit === 'ml') {
+    if (amt >= 1000) return { menge: 1, einheit: 'Flasche', gebinde_inhalt: Math.round(amt / 10) / 100, basis_einheit: 'l' };
+    return { menge: 1, einheit: 'Flasche', gebinde_inhalt: amt, basis_einheit: 'ml' };
+  }
+  // Liter
+  return { menge: 1, einheit: 'Flasche', gebinde_inhalt: amt, basis_einheit: 'l' };
+}
+
+function mapOffToSuggest(product) {
+  const name = offProductName(product);
+  const qty = parseOffQuantity(product.quantity);
+  let kategorie = offCategoryFromTags(product.categories_tags);
+  const local = name ? productSuggest(name, null) : null;
+  if (!kategorie && local?.kategorie) kategorie = local.kategorie;
+  let einheit = qty?.einheit || null;
+  if (!einheit && local?.einheit) einheit = local.einheit;
+  return {
+    name,
+    kategorie,
+    einheit,
+    mindestbestand: local?.mindestbestand != null ? local.mindestbestand : null,
+    ort_id: local?.ort_id || null,
+    menge: qty?.menge ?? null,
+    gebinde_inhalt: qty?.gebinde_inhalt ?? null,
+    basis_einheit: qty?.basis_einheit ?? null,
+    brands: product.brands || '',
+    quantityRaw: product.quantity || '',
+    source: 'off',
+  };
+}
+
+/** Kamera-Scan + manuelle Eingabe. BarcodeDetector oder lazy ZXing. */
 function scanBarcode() {
-  return new Promise(async resolve => {
-    let stream, timer, done = false;
+  return new Promise(resolve => {
+    let stream = null, timer = null, reader = null, done = false, starting = false;
+    const canCam = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     const d = document.createElement('dialog');
-    d.innerHTML = `<div class="scanbox"><h2 style="margin-top:0">Barcode scannen</h2><video playsinline muted></video><p class="muted">Barcode vor die Kamera halten …</p><button class="btn secondary block" type="button">Abbrechen</button></div>`;
-    document.body.appendChild(d); d.showModal();
-    const finish = code => { if (done) return; done = true; clearInterval(timer); stream && stream.getTracks().forEach(t => t.stop()); d.close(); d.remove(); resolve(code || null); };
-    d.querySelector('button').onclick = () => finish(null);
-    d.addEventListener('cancel', () => finish(null));
-    try {
-      const det = new BarcodeDetector();
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const v = d.querySelector('video'); v.srcObject = stream; await v.play();
-      timer = setInterval(async () => { try { const r = await det.detect(v); if (r[0]) finish(r[0].rawValue); } catch { } }, 300);
-    } catch (e) { fail(e); finish(null); }
+    d.className = 'scan-dialog';
+    d.innerHTML = `<div class="scanbox">
+      <h2 style="margin-top:0">Barcode scannen</h2>
+      <video playsinline muted autoplay></video>
+      <p class="muted" id="scanStatus">Barcode vor die Kamera halten …</p>
+      <label for="scanManual" class="muted" style="display:block;margin-top:.6rem">Barcode manuell eingeben</label>
+      <div class="row"><input id="scanManual" inputmode="numeric" autocomplete="off" placeholder="z.B. 3057640257773" style="flex:1">
+        <button type="button" class="btn small" id="scanManualGo" style="background:#2e7d32">OK</button></div>
+      <div class="row" style="margin-top:.6rem;gap:.4rem">
+        <button type="button" class="btn secondary grow" id="scanAgain">🔄 Neu scannen</button>
+        <button type="button" class="btn secondary grow" id="scanCancel">Abbrechen</button>
+      </div>
+    </div>`;
+    document.body.appendChild(d);
+    d.showModal();
+    const status = d.querySelector('#scanStatus');
+    const video = d.querySelector('video');
+    const stopAll = () => {
+      clearInterval(timer); timer = null;
+      try { reader?.reset?.(); reader?.stopContinuousDecode?.(); reader?.stopAsyncDecode?.(); } catch { /* */ }
+      reader = null;
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      try { video.srcObject = null; } catch { /* */ }
+    };
+    const finish = code => {
+      if (done) return;
+      done = true;
+      stopAll();
+      d.close(); d.remove();
+      resolve(code ? normalizeBarcode(code) : null);
+    };
+    d.querySelector('#scanCancel').onclick = () => finish(null);
+    d.addEventListener('cancel', e => { e.preventDefault(); finish(null); });
+    const acceptCode = raw => {
+      const c = normalizeBarcode(raw);
+      if (!c) return;
+      if (!/^\d+$/.test(c)) { status.textContent = 'Bitte nur Ziffern (EAN/GTIN), keine QR-Texte.'; return; }
+      if (!isValidGtin(c)) { status.textContent = 'Barcode ungültig (Prüfziffer). Bitte erneut versuchen.'; return; }
+      status.textContent = 'Erkannt: ' + c;
+      finish(c);
+    };
+    d.querySelector('#scanManualGo').onclick = () => acceptCode(d.querySelector('#scanManual').value);
+    d.querySelector('#scanManual').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); acceptCode(e.target.value); }
+    });
+
+    async function startCamera() {
+      if (starting || done) return;
+      starting = true;
+      stopAll();
+      if (!canCam) {
+        status.textContent = 'Keine Kamera – bitte Barcode manuell eingeben.';
+        starting = false;
+        return;
+      }
+      status.textContent = 'Kamera wird geöffnet …';
+      const constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
+      try {
+        if ('BarcodeDetector' in window) {
+          let formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+          let det;
+          try { det = new BarcodeDetector({ formats }); }
+          catch { det = new BarcodeDetector(); }
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          await video.play();
+          status.textContent = 'Barcode vor die Kamera halten …';
+          timer = setInterval(async () => {
+            if (done) return;
+            try {
+              const r = await det.detect(video);
+              for (const hit of r || []) {
+                const raw = hit.rawValue || hit.rawValue === 0 ? String(hit.rawValue) : '';
+                if (isValidGtin(raw)) { acceptCode(raw); return; }
+              }
+            } catch { /* frame skip */ }
+          }, 280);
+        } else {
+          status.textContent = 'Scanner wird geladen …';
+          const ZXing = await ensureZXing();
+          const hints = new Map();
+          try {
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+              ZXing.BarcodeFormat.EAN_13,
+              ZXing.BarcodeFormat.EAN_8,
+              ZXing.BarcodeFormat.UPC_A,
+              ZXing.BarcodeFormat.UPC_E,
+              ZXing.BarcodeFormat.CODE_128,
+            ]);
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+          } catch { /* */ }
+          reader = new ZXing.BrowserMultiFormatReader(hints);
+          status.textContent = 'Barcode vor die Kamera halten …';
+          await reader.decodeFromVideoDevice(undefined, video, (result, err) => {
+            if (done || !result) return;
+            try {
+              const raw = result.getText ? result.getText() : String(result.text || '');
+              if (isValidGtin(raw)) acceptCode(raw);
+            } catch { /* */ }
+          });
+          stream = video.srcObject;
+        }
+      } catch (e) {
+        console.warn('[scan]', e);
+        const denied = /NotAllowed|Permission|denied/i.test(String(e?.name || e?.message || e));
+        status.textContent = denied
+          ? 'Kein Kamerazugriff – bitte Barcode manuell eingeben.'
+          : 'Kamera nicht verfügbar – bitte Barcode manuell eingeben.';
+      } finally {
+        starting = false;
+      }
+    }
+    d.querySelector('#scanAgain').onclick = () => {
+      d.querySelector('#scanManual').value = '';
+      status.textContent = 'Neu scannen …';
+      startCamera();
+    };
+    startCamera();
   });
 }
 
@@ -1231,7 +1483,6 @@ function vForm(id) {
   it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', angebotsname: '', notiz: '', gebinde_inhalt: null, basis_einheit: null };
   let file = null;
   const u = imgUrl(it);
-  const scan = 'BarcodeDetector' in window;
   const kats = [...new Set([...KATEGORIEN, ...vstate.items.map(i => i.kategorie).filter(Boolean)])];
   const decIn = v => v == null ? '' : String(v).replace('.', ',');
   // Draft-Chargen für neue Artikel; bei Bearbeitung live aus DB
@@ -1296,7 +1547,9 @@ function vForm(id) {
       <label for="ort">Ort</label>
       <div class="row"><select id="ort" style="flex:1"></select><button type="button" class="btn small secondary" id="newOrt">＋ Neu</button></div>
       <label for="bc">Barcode (optional)</label>
-      <div class="row"><input id="bc" style="flex:1" inputmode="numeric" value="${esc(it.barcode)}">${scan ? '<button type="button" class="btn small secondary" id="scanBc">▥ Scannen</button>' : ''}</div>
+      <div class="row"><input id="bc" style="flex:1" inputmode="numeric" value="${esc(it.barcode)}"><button type="button" class="btn small secondary" id="scanBc">▥ Scannen</button></div>
+      <p id="offAttr" class="muted hidden" style="font-size:.85rem;margin:.25rem 0 0">Produktdaten: <a href="https://openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> · Bitte Produkt prüfen</p>
+      <p id="bcStatus" class="muted" style="font-size:.85rem;margin:.2rem 0 0"></p>
       <label>Foto (optional)</label>
       <img id="prev" class="photo-preview ${u ? '' : 'hidden'}" src="${esc(u || '')}" alt="">
       <div class="row">
@@ -1315,7 +1568,139 @@ function vForm(id) {
   fillOrte(it.ort_id);
   document.getElementById('newOrt').onclick = async () => { const o = await ortDialog(); if (o) { fillOrte(o.id); touched.ort = true; renderChargen(); } };
   oSel.onchange = () => { touched.ort = true; };
-  if (scan) document.getElementById('scanBc').onclick = async () => { const c = await scanBarcode(); if (c) document.getElementById('bc').value = c; };
+  let offAttrShown = false;
+  const bcStatus = () => document.getElementById('bcStatus');
+  const showOffAttr = () => {
+    const el = document.getElementById('offAttr');
+    if (el && !offAttrShown) { el.classList.remove('hidden'); offAttrShown = true; }
+  };
+  function setLotMengeIfEmpty(menge) {
+    if (menge == null || !(Number(menge) > 0)) return;
+    if (!isNew || !draftLots || !draftLots.length) return;
+    const lot = draftLots[0];
+    // Nur setzen wenn Nutzer noch keine eigene Menge/MHD-Kombination „fertig“ hat – MHD behalten
+    if (Number(lot.menge) === 1 || Number(lot.menge) === 0 || lot.menge == null) {
+      lot.menge = Number(menge);
+      renderChargen();
+    }
+  }
+  function fillGebindeFromOff(sug) {
+    if (!sug) return;
+    const ein = document.getElementById('ein');
+    if (sug.einheit && ein && (!touched.ein || !String(ein.value || '').trim() || ein.value === 'Stück')) {
+      writeInputValue(ein, sug.einheit);
+      syncSuggestPick('ein', sug.einheit);
+      touched.ein = true;
+    }
+    updGebindeUI();
+    const box = document.getElementById('gebindeBox');
+    const gi = document.getElementById('gebinde');
+    const be = document.getElementById('basis');
+    if (sug.gebinde_inhalt != null && gi && isPackUnit(document.getElementById('ein')?.value)) {
+      if (!String(gi.value || '').trim()) writeInputValue(gi, decIn(sug.gebinde_inhalt));
+      if (be && sug.basis_einheit && !be.value) be.value = sug.basis_einheit;
+      if (box) box.classList.remove('hidden');
+      updGebindeUI();
+    } else if (sug.basis_einheit == null && sug.einheit && (sug.einheit === 'kg' || sug.einheit === 'g' || sug.einheit === 'l' || sug.einheit === 'ml')) {
+      // reine Mengen-Einheit – kein Gebinde
+    }
+    setLotMengeIfEmpty(sug.menge);
+  }
+  let barcodeLookupBusy = false;
+  async function applyBarcodeLookup(raw, { fromScan = false } = {}) {
+    const code = normalizeBarcode(raw);
+    const st = bcStatus();
+    const bc = document.getElementById('bc');
+    if (!code) { if (st) st.textContent = ''; return; }
+    if (barcodeLookupBusy) return;
+    barcodeLookupBusy = true;
+    try {
+    // Barcode ohne change-Event setzen (sonst Lookup-Schleife)
+    if (bc) {
+      const proto = HTMLInputElement.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) desc.set.call(bc, code); else bc.value = code;
+      try { bc.setAttribute('value', code); } catch { /* */ }
+    }
+    const det = document.getElementById('moreDetails'); if (det) det.open = true;
+
+    // 1) eigener Vorrat zuerst (kein Netz)
+    const hit = findVorratByBarcode(code);
+    if (hit && (isNew || hit.id !== it.id)) {
+      if (st) st.textContent = 'Schon im Vorrat: ' + hit.name;
+      const choice = await new Promise(resolve => {
+        const dlg = document.createElement('dialog');
+        dlg.innerHTML = `<div class="card" style="border:0;box-shadow:none;margin:0">
+          <h2 style="margin-top:0">Schon im Vorrat</h2>
+          <p><b>${esc(hit.name)}</b> hat diesen Barcode schon.</p>
+          <button type="button" class="btn block" id="exEdit" style="background:#2e7d32">Zum Artikel</button>
+          <div style="height:.4rem"></div>
+          <button type="button" class="btn block secondary" id="exQty">Menge hinzufügen</button>
+          <div style="height:.4rem"></div>
+          <button type="button" class="btn secondary block" id="exKeep">Hier lassen / neu</button>
+        </div>`;
+        document.body.appendChild(dlg); dlg.showModal();
+        const fin = v => { dlg.close(); dlg.remove(); resolve(v); };
+        dlg.querySelector('#exEdit').onclick = () => fin('edit');
+        dlg.querySelector('#exQty').onclick = () => fin('qty');
+        dlg.querySelector('#exKeep').onclick = () => fin('keep');
+        dlg.addEventListener('cancel', e => { e.preventDefault(); fin('keep'); });
+      });
+      if (choice === 'edit') { location.hash = '#v/artikel/' + hit.id; return; }
+      if (choice === 'qty') { location.hash = '#v/artikel/' + hit.id + '?add=1'; return; }
+      // keep: barcode bleibt, kein Auto-Fill vom alten Artikel
+    }
+
+    if (!isValidGtin(code)) {
+      if (st) st.textContent = 'Barcode gesetzt. Keine Prüfziffer – Name bitte selbst eingeben.';
+      return;
+    }
+    if (st) st.textContent = 'Produkt wird gesucht …';
+    const res = await lookupOpenFoodFacts(code);
+    if (res.reason === 'offline' || res.reason === 'network' || res.reason === 'timeout') {
+      if (st) st.textContent = res.reason === 'timeout'
+        ? 'Keine Antwort – bitte Name selbst eingeben.'
+        : 'Keine Verbindung – bitte Name selbst eingeben.';
+      toast('Keine Verbindung', 3500);
+      return;
+    }
+    if (!res.ok) {
+      if (st) st.textContent = 'Produkt nicht gefunden – bitte Name selbst eingeben';
+      toast('Produkt nicht gefunden – bitte Name selbst eingeben', 4000);
+      return;
+    }
+    const sug = mapOffToSuggest(res.product);
+    if (!sug.name) {
+      if (st) st.textContent = 'Produkt nicht gefunden – bitte Name selbst eingeben';
+      return;
+    }
+    const nameEl = document.getElementById('name');
+    // Name setzen (Scan soll Produkt füllen; Nutzer kann danach ändern)
+    if (nameEl) writeInputValue(nameEl, sug.name);
+    applySuggest({
+      kategorie: sug.kategorie,
+      einheit: sug.einheit,
+      mindestbestand: sug.mindestbestand,
+      ort_id: sug.ort_id,
+    }, { force: false });
+    fillGebindeFromOff(sug);
+    showOffAttr();
+    if (st) st.textContent = 'Vorschlag übernommen – bitte Produkt prüfen.';
+    toast('Produkt gefunden – bitte prüfen', 3000);
+    // Namens-Hinweise nachziehen
+    try { showHint(); } catch { /* showHint später definiert */ }
+    } finally {
+      barcodeLookupBusy = false;
+    }
+  }
+  document.getElementById('scanBc').onclick = async () => {
+    const c = await scanBarcode();
+    if (c) await applyBarcodeLookup(c, { fromScan: true });
+  };
+  document.getElementById('bc').addEventListener('change', async e => {
+    const c = normalizeBarcode(e.target.value);
+    if (c && isValidGtin(c)) await applyBarcodeLookup(c);
+  });
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
   bindSuggest('kat'); bindSuggest('ein');
@@ -1579,6 +1964,15 @@ function vForm(id) {
   nameEl.addEventListener('blur', showHint);
   if (it.name) showHint();
   updGebindeUI();
+  renderChargen();
+  // Vorausgefüllter Barcode (Liste → Neu) oder ?add=1 (Menge hinzufügen)
+  if (isNew && it.barcode && !it.name) {
+    applyBarcodeLookup(it.barcode).catch(err => console.warn('[barcode]', err));
+  }
+  if (!isNew && pre.get('add') === '1') {
+    const det = document.getElementById('moreDetails');
+    setTimeout(() => document.getElementById('addCharge')?.click(), 200);
+  }
 
   const del = document.getElementById('del');
   if (del) del.onclick = async () => {

@@ -2,7 +2,7 @@
    Cache-Version an Asset-Query ?v=… anpassen. */
 'use strict';
 
-const CACHE = 'sortiva-v20261106-13';
+const CACHE = 'sortiva-v20261106-14';
 const BASE = new URL('./', self.location).href;
 
 /** Kern-Shell: kleine Start-Assets, kein OCR-Vendor (~21 MB). */
@@ -10,13 +10,13 @@ const PRECACHE = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './style.css?v=20261106-13',
-  './app.js?v=20261106-13',
-  './import.js?v=20261106-13',
-  './lego.js?v=20261106-13',
-  './custom.js?v=20261106-13',
-  './offers.js?v=20261106-13',
-  './install.js?v=20261106-13',
+  './style.css?v=20261106-14',
+  './app.js?v=20261106-14',
+  './import.js?v=20261106-14',
+  './lego.js?v=20261106-14',
+  './custom.js?v=20261106-14',
+  './offers.js?v=20261106-14',
+  './install.js?v=20261106-14',
   './vendor/supabase/supabase.min.js?v=2.86.0',
   './icons/icon-192.png',
   './icons/icon-512.png',
