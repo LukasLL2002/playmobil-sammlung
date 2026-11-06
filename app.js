@@ -24,16 +24,15 @@ const priceLine = (unit, qty) => {
 };
 const priceLineHtml = (unit, qty) => { const t = priceLine(unit, qty); return t ? `<div class="sub price">${esc(t)}</div>` : ''; };
 
-/** Textfeld volle Breite + darunter native Select (mobil-tauglich). */
-function suggestField(id, value, suggestions, placeholder = '', pickLabel = 'wählen') {
+/** Ein sichtbares Eingabefeld + unsichtbare datalist-Vorschläge (kein doppeltes Select). */
+function suggestField(id, value, suggestions, placeholder = '', _pickLabel = '') {
   const opts = [...new Set((suggestions || []).map(s => String(s).trim()).filter(Boolean))];
   const val = value == null ? '' : String(value);
+  const listId = id + 'List';
   return `<div class="suggest" data-suggest="${esc(id)}">
-    <input id="${id}" name="${id}" value="${esc(val)}" placeholder="${esc(placeholder)}" autocomplete="off" inputmode="text">
-    <select id="${id}Pick" name="${id}Pick" aria-label="${esc(pickLabel)}">
-      <option value="">${esc(pickLabel)}</option>
-      ${opts.map(x => `<option value="${esc(x)}"${x === val ? ' selected' : ''}>${esc(x)}</option>`).join('')}
-    </select></div>`;
+    <input id="${id}" name="${id}" list="${listId}" value="${esc(val)}" placeholder="${esc(placeholder)}" autocomplete="off" inputmode="text">
+    <datalist id="${listId}">${opts.map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist>
+  </div>`;
 }
 function writeInputValue(el, value) {
   if (!el) return false;
@@ -47,21 +46,12 @@ function writeInputValue(el, value) {
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return String(el.value) === next;
 }
-function syncSuggestPick(id, value) {
-  const sel = document.getElementById(id + 'Pick');
-  if (!sel) return false;
-  const v = value == null ? '' : String(value);
-  if ([...sel.options].some(o => o.value === v)) {
-    sel.value = v;
-    sel.classList.add('suggest-applied');
-    return sel.value === v;
-  }
-  return true;
-}
+/** Früher Select-Sync – kein Select mehr, bewusst No-Op. */
+function syncSuggestPick(_id, _value) { return true; }
 function bindSuggest(id) {
-  const inp = document.getElementById(id), sel = document.getElementById(id + 'Pick');
-  if (!inp || !sel) return;
-  sel.onchange = () => { if (sel.value) writeInputValue(inp, sel.value); };
+  // datalist braucht keinen Extra-Listener; Input-Events bleiben am Feld
+  const inp = document.getElementById(id);
+  if (!inp) return;
 }
 const num = n => (Number(n) || 0).toLocaleString('de-DE');
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1028,8 +1018,6 @@ function vForm(id) {
   document.getElementById('kat').addEventListener('input', () => { touched.kat = true; });
   document.getElementById('ein').addEventListener('input', () => { touched.ein = true; updGebindeUI(); renderChargen(); });
   document.getElementById('min').addEventListener('input', () => { touched.min = true; });
-  const katPick = document.getElementById('katPick'); if (katPick) katPick.addEventListener('change', () => { touched.kat = true; });
-  const einPick = document.getElementById('einPick'); if (einPick) einPick.addEventListener('change', () => { touched.ein = true; updGebindeUI(); renderChargen(); });
   const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
 
   function updGebindeUI() {

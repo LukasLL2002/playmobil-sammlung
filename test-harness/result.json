@@ -1,32 +1,16 @@
 {
-  "bar": "PASS {\"applyOk\":true,\"before\":{\"kat\":\"\",\"ein\":\"Stück\",\"min\":\"\"},\"after\":{\"kat\":\"Gemüse\",\"ein\":\"kg\",\"min\":\"1\",\"katW\":326,\"katPick\":\"Gemüse\",\"einPick\":\"kg\"},\"gebOk\":true,\"help\":\"3 Packung à 1 Liter = Gesamt 3 Liter\",\"reuseOk\":true,\"noDouble\":true,\"sumText\":\"Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)\",\"editOk\":true,\"editRows1\":2,\"editRows2\":2,\"editSum\":\"Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)\",\"errors\":[]}",
+  "bar": "PASS {\"structOk\":true,\"applyOk\":true,\"customOk\":true,\"after\":{\"kat\":\"Milchprodukte\",\"ein\":\"l\",\"min\":\"\",\"katW\":326,\"visibleControls\":2},\"errors\":[]}",
   "result": {
+    "structOk": true,
     "applyOk": true,
-    "before": {
-      "kat": "",
-      "ein": "Stück",
-      "min": ""
-    },
+    "customOk": true,
     "after": {
-      "kat": "Gemüse",
-      "ein": "kg",
-      "min": "1",
+      "kat": "Milchprodukte",
+      "ein": "l",
+      "min": "",
       "katW": 326,
-      "katPick": "Gemüse",
-      "einPick": "kg"
+      "visibleControls": 2
     },
-    "gebOk": true,
-    "help": "3 Packung à 1 Liter = Gesamt 3 Liter",
-    "reuseOk": true,
-    "noDouble": true,
-    "sumText": "Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)",
-    "editOk": true,
-    "editRows1": 2,
-    "editRows2": 2,
-    "editSum": "Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)",
     "errors": []
-  },
-  "logs": [
-    "[log] TEST_RESULT {applyOk: true, before: Object, after: Object, gebOk: true, help: 3 Packung à 1 Liter = Gesamt 3 Liter}"
-  ]
+  }
 }

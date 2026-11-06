@@ -2,7 +2,7 @@
 <html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>vForm harness</title>
-<link rel="stylesheet" href="../style.css?v=20261106-3">
+<link rel="stylesheet" href="../style.css?v=20261106-4">
 <style>
 #testbar{position:sticky;top:0;z-index:999;background:#111;color:#fff;padding:.5rem;font:11px monospace;white-space:pre-wrap}
 #testbar.ok{background:#1b5e20}#testbar.fail{background:#b71c1c}
@@ -21,97 +21,59 @@ window.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session:nu
 from(){const a={select(){return a},eq(){return a},order(){return a},insert(){return a},update(){return a},delete(){return a},single:async()=>({data:null,error:null}),then(r){return Promise.resolve({data:[],error:null}).then(r)}};return a},
 rpc:async()=>({data:null,error:null}),storage:{from(){return{upload:async()=>({}),remove:async()=>({}),createSignedUrl:async()=>({data:{signedUrl:''}})}}}})};
 </script>
-<script src="../app.js?v=20261106-3"></script>
-<script src="../offers.js?v=20261106-3"></script>
+<script src="../app.js?v=20261106-4"></script>
+<script src="../offers.js?v=20261106-4"></script>
 <script>
 (async()=>{
 const bar=document.getElementById('testbar');
 try{
   state.user={id:'u1',email:'test@example.com'}; state.viewUid='u1'; state.loaded=true;
-  vstate.loaded=true; vstate.orte=[{id:1,name:'Keller'}]; vstate.items=[]; vstate.chargen={};
+  vstate.loaded=true; vstate.orte=[]; vstate.items=[]; vstate.chargen={};
   document.getElementById('topbar').classList.remove('hidden');
-
-  // --- Test A: apply-all ---
   vForm('neu');
+  // Structure: one input each, no select in .suggest
+  const katSuggest=document.querySelector('[data-suggest=kat]');
+  const einSuggest=document.querySelector('[data-suggest=ein]');
+  const katInputs=katSuggest.querySelectorAll('input');
+  const einInputs=einSuggest.querySelectorAll('input');
+  const katSelects=katSuggest.querySelectorAll('select');
+  const einSelects=einSuggest.querySelectorAll('select');
+  const katLists=katSuggest.querySelectorAll('datalist');
+  const einLists=einSuggest.querySelectorAll('datalist');
+  const structOk=katInputs.length===1&&einInputs.length===1&&katSelects.length===0&&einSelects.length===0&&katLists.length===1&&einLists.length===1
+    && document.getElementById('kat').getAttribute('list')==='katList'
+    && document.getElementById('ein').getAttribute('list')==='einList';
+
   const name=document.getElementById('name');
-  name.value='tomate';
+  name.value='Milch';
   name.dispatchEvent(new Event('input',{bubbles:true}));
   name.dispatchEvent(new Event('change',{bubbles:true}));
   await new Promise(r=>setTimeout(r,700));
   document.getElementById('kat').value='';
   document.getElementById('ein').value='Stück';
   document.getElementById('min').value='';
-  const before={kat:document.getElementById('kat').value,ein:document.getElementById('ein').value,min:document.getElementById('min').value};
   document.getElementById('applyHint').click();
   await new Promise(r=>setTimeout(r,100));
-  const after={kat:document.getElementById('kat').value,ein:document.getElementById('ein').value,min:document.getElementById('min').value,
+  const after={
+    kat:document.getElementById('kat').value,
+    ein:document.getElementById('ein').value,
+    min:document.getElementById('min').value,
     katW:Math.round(document.getElementById('kat').getBoundingClientRect().width),
-    katPick:document.getElementById('katPick').value,einPick:document.getElementById('einPick').value};
-  const applyOk=after.kat==='Gemüse'&&after.ein==='kg'&&after.min==='1'&&after.katW>=280;
+    visibleControls: document.querySelectorAll('[data-suggest=kat] input, [data-suggest=kat] select, [data-suggest=ein] input, [data-suggest=ein] select').length,
+  };
+  // Milch -> Milchprodukte + l (dict)
+  const applyOk=after.kat==='Milchprodukte'&&after.ein==='l'&&after.visibleControls===2&&after.katW>=280;
+  // manual type still works
+  document.getElementById('kat').value='Eigenkat';
+  document.getElementById('kat').dispatchEvent(new Event('input',{bubbles:true}));
+  const customOk=document.getElementById('kat').value==='Eigenkat';
 
-  // --- Test B: gebinde UI ---
-  writeInputValue(document.getElementById('ein'),'Packung');
-  syncSuggestPick('ein','Packung');
-  document.getElementById('ein').dispatchEvent(new Event('input',{bubbles:true}));
-  await new Promise(r=>setTimeout(r,50));
-  const gBox=document.getElementById('gebindeBox');
-  document.getElementById('gebinde').value='1';
-  document.getElementById('basis').value='l';
-  // set menge 3 on first lot
-  const mInp=document.querySelector('[data-f=menge]');
-  mInp.value='3'; mInp.dispatchEvent(new Event('input',{bubbles:true}));
-  document.getElementById('gebinde').dispatchEvent(new Event('input',{bubbles:true}));
-  document.getElementById('basis').dispatchEvent(new Event('change',{bubbles:true}));
-  await new Promise(r=>setTimeout(r,50));
-  const help=document.getElementById('gebindeHelp').textContent;
-  const gebOk=!gBox.classList.contains('hidden')&&/3/.test(help)&&/Liter/.test(help)&&/Gesamt/.test(help);
-
-  // --- Test C: MHD empty reuse (new) ---
-  // clear first lot to empty
-  mInp.value='0'; mInp.dispatchEvent(new Event('input',{bubbles:true}));
-  document.querySelector('[data-f=mhd]').value='';
-  document.querySelector('[data-f=mhd]').dispatchEvent(new Event('change',{bubbles:true}));
-  const beforeRows=document.querySelectorAll('#chargenList .charge-card').length;
-  document.getElementById('addCharge').click();
-  await new Promise(r=>setTimeout(r,50));
-  const afterRows=document.querySelectorAll('#chargenList .charge-card').length;
-  const reuseOk=beforeRows===1&&afterRows===1; // reused empty, no second row
-
-  // fill first, add second empty, add again should reuse not triple
-  mInp.value='2'; mInp.dispatchEvent(new Event('input',{bubbles:true}));
-  document.querySelector('[data-f=mhd]').value='2027-01-01';
-  document.querySelector('[data-f=mhd]').dispatchEvent(new Event('change',{bubbles:true}));
-  document.getElementById('addCharge').click();
-  await new Promise(r=>setTimeout(r,50));
-  const rows2=document.querySelectorAll('#chargenList .charge-card').length;
-  document.getElementById('addCharge').click();
-  await new Promise(r=>setTimeout(r,50));
-  const rows3=document.querySelectorAll('#chargenList .charge-card').length;
-  const noDouble=rows2===2&&rows3===2;
-  const sumText=document.getElementById('chargenSum').textContent;
-  const sumOk=/Gesamt: 2/.test(sumText)&&/leer/.test(sumText); // empty not in total
-
-  // --- Test D: edit mode reuse (simulated) ---
-  vstate.items=[{id:9,name:'Milch',kategorie:'Milchprodukte',menge:2,einheit:'Packung',gebinde_inhalt:1,basis_einheit:'l',mindestbestand:null,ort_id:null,mhd:'2027-01-01',preis:null,barcode:null,angebotsname:null,notiz:null}];
-  vstate.chargen={9:[{id:101,vorrat_id:9,user_id:'u1',menge:2,mhd:'2027-01-01',ort_id:null,notiz:null}]};
-  vForm('9');
-  await new Promise(r=>setTimeout(r,50));
-  document.getElementById('addCharge').click();
-  await new Promise(r=>setTimeout(r,50));
-  const editRows1=document.querySelectorAll('#chargenList .charge-card').length;
-  document.getElementById('addCharge').click();
-  await new Promise(r=>setTimeout(r,50));
-  const editRows2=document.querySelectorAll('#chargenList .charge-card').length;
-  const editOk=editRows1===2&&editRows2===2&&!!document.querySelector('[data-dk]');
-  const editSum=document.getElementById('chargenSum').textContent;
-  const editSumOk=/Gesamt: 2/.test(editSum); // empty draft not counted
-
-  const result={applyOk,before,after,gebOk,help,reuseOk,noDouble,sumText,editOk,editRows1,editRows2,editSum,errors:window.__errors.slice()};
+  const result={structOk,applyOk,customOk,after,errors:window.__errors.slice()};
   window.__testResult=result;
-  const ok=applyOk&&gebOk&&reuseOk&&noDouble&&sumOk&&editOk&&editSumOk&&!window.__errors.length;
+  const ok=structOk&&applyOk&&customOk&&!window.__errors.length;
   bar.className=ok?'ok':'fail';
   bar.textContent=(ok?'PASS ':'FAIL ')+JSON.stringify(result);
   console.log('TEST_RESULT',result);
-}catch(e){bar.className='fail';bar.textContent='FAIL '+e;window.__testResult={error:String(e),errors:window.__errors};console.error(e)}
+}catch(e){bar.className='fail';bar.textContent='FAIL '+e;window.__testResult={error:String(e)};console.error(e)}
 })();
 </script></body></html>

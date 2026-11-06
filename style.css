@@ -129,9 +129,9 @@ table.mini th{background:#f5f5f5}
 .right .price,.right .sub.price{text-align:right}
 .best-offer{background:#e8f5e9;border-left:4px solid #2e7d32;padding:.7rem;border-radius:10px;margin:.6rem 0}
 
-.suggest{display:flex;flex-direction:column;gap:.35rem;width:100%}
-.suggest input,.suggest select{width:100%;max-width:100%;box-sizing:border-box;min-height:48px;font-size:.95rem}
-.suggest select{cursor:pointer;appearance:auto;-webkit-appearance:menulist}
+.suggest{width:100%}
+.suggest input{width:100%;max-width:100%;box-sizing:border-box;min-height:48px;font-size:1.05rem}
+.suggest datalist{display:none}
 select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}
 
 .name-hint{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.4rem 0 .6rem;padding:.55rem .75rem;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;font-size:.92rem}
