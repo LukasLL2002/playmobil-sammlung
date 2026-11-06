@@ -1,33 +1,32 @@
 {
-  "bar": "PASS {\"kat\":\"Gemüse\",\"ein\":\"kg\",\"min\":\"1\",\"katW\":326,\"einW\":326,\"pickW\":326,\"clipped\":false,\"katPick\":\"Gemüse\",\"einPick\":\"kg\",\"hint\":\"Vorschlag: Gemüse · kg · Min. 1\",\"errors\":[]}",
+  "bar": "PASS {\"applyOk\":true,\"before\":{\"kat\":\"\",\"ein\":\"Stück\",\"min\":\"\"},\"after\":{\"kat\":\"Gemüse\",\"ein\":\"kg\",\"min\":\"1\",\"katW\":326,\"katPick\":\"Gemüse\",\"einPick\":\"kg\"},\"gebOk\":true,\"help\":\"3 Packung à 1 Liter = Gesamt 3 Liter\",\"reuseOk\":true,\"noDouble\":true,\"sumText\":\"Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)\",\"editOk\":true,\"editRows1\":2,\"editRows2\":2,\"editSum\":\"Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)\",\"errors\":[]}",
   "result": {
-    "kat": "Gemüse",
-    "ein": "kg",
-    "min": "1",
-    "katW": 326,
-    "einW": 326,
-    "pickW": 326,
-    "clipped": false,
-    "katPick": "Gemüse",
-    "einPick": "kg",
-    "hint": "Vorschlag: Gemüse · kg · Min. 1",
+    "applyOk": true,
+    "before": {
+      "kat": "",
+      "ein": "Stück",
+      "min": ""
+    },
+    "after": {
+      "kat": "Gemüse",
+      "ein": "kg",
+      "min": "1",
+      "katW": 326,
+      "katPick": "Gemüse",
+      "einPick": "kg"
+    },
+    "gebOk": true,
+    "help": "3 Packung à 1 Liter = Gesamt 3 Liter",
+    "reuseOk": true,
+    "noDouble": true,
+    "sumText": "Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)",
+    "editOk": true,
+    "editRows1": 2,
+    "editRows2": 2,
+    "editSum": "Gesamt: 2 Packung · 1 Eintrag · 1 leer (zählen nicht)",
     "errors": []
   },
   "logs": [
-    "[log] TEST_RESULT {kat: Gemüse, ein: kg, min: 1, katW: 326, einW: 326}"
-  ],
-  "boxes": {
-    "kat": {
-      "x": 32,
-      "y": 567.21875,
-      "width": 326,
-      "height": 48
-    },
-    "ein": {
-      "x": 32,
-      "y": 707.6875,
-      "width": 326,
-      "height": 48
-    }
-  }
+    "[log] TEST_RESULT {applyOk: true, before: Object, after: Object, gebOk: true, help: 3 Packung à 1 Liter = Gesamt 3 Liter}"
+  ]
 }

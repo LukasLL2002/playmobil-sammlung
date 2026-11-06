@@ -24,34 +24,44 @@ const priceLine = (unit, qty) => {
 };
 const priceLineHtml = (unit, qty) => { const t = priceLine(unit, qty); return t ? `<div class="sub price">${esc(t)}</div>` : ''; };
 
-/** Textfeld volle Breite + darunter native Select (mobil-tauglich, kein enges 2-Spalten-Grid). */
+/** Textfeld volle Breite + darunter native Select (mobil-tauglich). */
 function suggestField(id, value, suggestions, placeholder = '', pickLabel = 'wählen') {
   const opts = [...new Set((suggestions || []).map(s => String(s).trim()).filter(Boolean))];
   const val = value == null ? '' : String(value);
   return `<div class="suggest" data-suggest="${esc(id)}">
-    <input id="${id}" value="${esc(val)}" placeholder="${esc(placeholder)}" autocomplete="off">
-    <select id="${id}Pick" aria-label="${esc(pickLabel)}">
+    <input id="${id}" name="${id}" value="${esc(val)}" placeholder="${esc(placeholder)}" autocomplete="off" inputmode="text">
+    <select id="${id}Pick" name="${id}Pick" aria-label="${esc(pickLabel)}">
       <option value="">${esc(pickLabel)}</option>
       ${opts.map(x => `<option value="${esc(x)}"${x === val ? ' selected' : ''}>${esc(x)}</option>`).join('')}
     </select></div>`;
 }
+function writeInputValue(el, value) {
+  if (!el) return false;
+  const next = value == null ? '' : String(value);
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (desc && desc.set) desc.set.call(el, next); else el.value = next;
+  try { el.setAttribute('value', next); } catch { /* */ }
+  el.classList.add('suggest-applied');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return String(el.value) === next;
+}
 function syncSuggestPick(id, value) {
   const sel = document.getElementById(id + 'Pick');
-  if (!sel) return;
+  if (!sel) return false;
   const v = value == null ? '' : String(value);
-  const hit = [...sel.options].some(o => o.value === v);
-  if (hit) sel.value = v;
-  // Platzhalter behalten, Input-Wert nie löschen
+  if ([...sel.options].some(o => o.value === v)) {
+    sel.value = v;
+    sel.classList.add('suggest-applied');
+    return sel.value === v;
+  }
+  return true;
 }
 function bindSuggest(id) {
   const inp = document.getElementById(id), sel = document.getElementById(id + 'Pick');
   if (!inp || !sel) return;
-  sel.onchange = () => {
-    if (!sel.value) return;
-    inp.value = sel.value;
-    // Select auf gewähltem Wert belassen (kein Reset → sichtbarer Wert bleibt)
-    inp.dispatchEvent(new Event('input', { bubbles: true }));
-  };
+  sel.onchange = () => { if (sel.value) writeInputValue(inp, sel.value); };
 }
 const num = n => (Number(n) || 0).toLocaleString('de-DE');
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -687,6 +697,20 @@ function viewPasswort() {
 const vstate = { loaded: false, orte: [], items: [], chargen: {}, filter: { q: '', kat: '', ort: '', nur: '' } };
 const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Gemüse', 'Obst', 'Milchprodukte', 'Fleisch & Wurst', 'Fisch', 'Brot & Backwaren', 'Süßigkeiten', 'Haushalt', 'Sonstiges'];
 const EINHEITEN = ['Stück', 'Packung', 'Dose', 'Glas', 'Flasche', 'kg', 'g', 'l', 'ml'];
+const PACK_UNITS = new Set(['packung', 'dose', 'glas', 'flasche']);
+const BASIS_EINHEITEN = ['l', 'ml', 'kg', 'g', 'Stück'];
+const isPackUnit = u => PACK_UNITS.has(norm(u || ''));
+function formatGebinde(it) {
+  const n = Number(it.menge) || 0;
+  const u = (it.einheit || '').trim() || 'Stück';
+  const gi = it.gebinde_inhalt != null ? Number(it.gebinde_inhalt) : null;
+  const be = (it.basis_einheit || '').trim();
+  if (!isPackUnit(u) || gi == null || !be || !(gi > 0)) return '';
+  const total = Math.round(n * gi * 1000) / 1000;
+  const beLabel = be === 'l' ? 'Liter' : be;
+  return `${dec(n)} ${u} à ${dec(gi)} ${beLabel} · Gesamt ${dec(total)} ${beLabel}`;
+}
+
 /** Lokale Produkt→Kategorie/Einheit-Hinweise (kein Netz). */
 const PRODUCT_HINTS = [
   { keys: ['tomat', 'gurke', 'zucchini', 'paprika', 'karotte', 'möhre', 'moehre', 'zwiebel', 'knoblauch', 'salat', 'spinat', 'kohl', 'brokkoli', 'blumenkohl', 'bohne', 'erbse', 'mais', 'kartoffel', 'gemüse', 'gemuese'], kat: 'Gemüse', ein: 'kg', min: 1 },
@@ -796,6 +820,7 @@ function vItem(it) {
       <div style="min-width:0;flex:1"><div class="title">${esc(it.name)}</div>
       <div class="sub">${esc(it.kategorie || '')}${o ? ' · 📍 ' + esc(o.name) : ''}</div>
       <div>${mhdText(it)}${lotHint}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div>
+      ${formatGebinde(it) ? `<div class="sub">${esc(formatGebinde(it))}</div>` : ''}
       ${it.preis != null ? `<div class="sub price">${esc(priceLine(it.preis, it.menge))}</div>` : ''}</div></a>
     <div class="qty"><button type="button" data-d="-1" aria-label="weniger">−</button>
       <div class="n">${dec(it.menge)}<small>${esc(it.einheit || '')}</small></div>
@@ -910,7 +935,7 @@ function vForm(id) {
   const isNew = !id || id.startsWith('neu');
   let it = isNew ? null : vstate.items.find(x => x.id === Number(id));
   if (!isNew && !it) { app.innerHTML = '<div class="card">Artikel nicht gefunden. <a href="#v/liste">Zur Liste</a></div>'; return; }
-  it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', angebotsname: '', notiz: '' };
+  it = it || { name: '', kategorie: pre.get('kat') || '', menge: 1, einheit: pre.get('einheit') || 'Stück', mindestbestand: null, ort_id: pre.get('ort') ? Number(pre.get('ort')) : null, mhd: null, preis: null, barcode: pre.get('barcode') || '', angebotsname: '', notiz: '', gebinde_inhalt: null, basis_einheit: null };
   let file = null;
   const u = imgUrl(it);
   const scan = 'BarcodeDetector' in window;
@@ -925,11 +950,13 @@ function vForm(id) {
   // Neue Artikel: Einheit „Stück“ Default zählt als unberührt, damit Vorschlag greifen kann
   if (isNew && !pre.get('einheit')) touched.ein = false;
 
-  const lotSum = () => {
-    if (isNew) return draftLots.reduce((s, l) => s + (Number(l.menge) || 0), 0);
-    return Number(it.menge) || 0;
-  };
-  const lotCount = () => isNew ? draftLots.length : (vstate.chargen[it.id] || []).length;
+  let editDrafts = [];
+  const isEmptyLot = l => !(Number(l.menge) > 0) && !l.mhd;
+  const dbLots = () => vstate.chargen[it.id] || [];
+  const listLots = () => isNew ? draftLots : [...dbLots(), ...editDrafts];
+  const activeLots = () => listLots().filter(l => !isEmptyLot(l));
+  const lotSum = () => activeLots().reduce((s, l) => s + (Number(l.menge) || 0), 0);
+  const lotCount = () => activeLots().length;
 
   app.innerHTML = `
     <a class="back" href="#v/liste">‹ Zurück</a>
@@ -946,6 +973,17 @@ function vForm(id) {
       ${suggestField('kat', it.kategorie, kats, 'z.B. Konserven', 'Gemüse, Konserven… wählen')}
       <label for="ein">Einheit</label>
       ${suggestField('ein', it.einheit, EINHEITEN, 'Stück', 'Einheit wählen')}
+      <div id="gebindeBox" class="${isPackUnit(it.einheit) ? '' : 'hidden'}">
+        <div class="grid2">
+          <div><label for="gebinde">Inhalt je Packung</label><input id="gebinde" inputmode="decimal" value="${decIn(it.gebinde_inhalt)}" placeholder="z.B. 1"></div>
+          <div><label for="basis">Basis-Einheit</label>
+            <select id="basis"><option value="">– wählen –</option>
+              ${BASIS_EINHEITEN.map(b => `<option value="${b}" ${it.basis_einheit === b ? 'selected' : ''}>${b === 'l' ? 'Liter (l)' : b}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p class="muted" id="gebindeHelp" style="font-size:.9rem;margin:.3rem 0 .5rem"></p>
+      </div>
       <div class="grid2">
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
         <div><label for="preis">Einzelpreis (€ pro Packung/Stück)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"><div id="preisPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
@@ -988,11 +1026,32 @@ function vForm(id) {
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
   bindSuggest('kat'); bindSuggest('ein');
   document.getElementById('kat').addEventListener('input', () => { touched.kat = true; });
-  document.getElementById('ein').addEventListener('input', () => { touched.ein = true; renderChargen(); });
+  document.getElementById('ein').addEventListener('input', () => { touched.ein = true; updGebindeUI(); renderChargen(); });
   document.getElementById('min').addEventListener('input', () => { touched.min = true; });
   const katPick = document.getElementById('katPick'); if (katPick) katPick.addEventListener('change', () => { touched.kat = true; });
-  const einPick = document.getElementById('einPick'); if (einPick) einPick.addEventListener('change', () => { touched.ein = true; renderChargen(); });
+  const einPick = document.getElementById('einPick'); if (einPick) einPick.addEventListener('change', () => { touched.ein = true; updGebindeUI(); renderChargen(); });
   const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
+
+  function updGebindeUI() {
+    const box = document.getElementById('gebindeBox'); if (!box) return;
+    const ein = document.getElementById('ein')?.value?.trim() || '';
+    const show = isPackUnit(ein);
+    box.classList.toggle('hidden', !show);
+    const lab = box.querySelector('label[for=gebinde]');
+    if (lab) lab.textContent = 'Inhalt je ' + (ein || 'Packung');
+    const giEl = document.getElementById('gebinde'), beEl = document.getElementById('basis'), help = document.getElementById('gebindeHelp');
+    if (!giEl || !beEl || !help) return;
+    let gi = null; try { gi = parseDec(giEl.value); } catch { gi = null; }
+    const be = beEl.value;
+    const n = lotSum();
+    if (!show || gi == null || !be || !(gi > 0)) { help.textContent = show ? 'z.B. 3 Packungen à 1 Liter → Gesamt 3 Liter' : ''; return; }
+    const total = Math.round(n * gi * 1000) / 1000;
+    const beLabel = be === 'l' ? 'Liter' : be;
+    const einLabel = (n === 1 ? ein : (ein === 'Packung' ? 'Packungen' : ein + (ein.endsWith('e') || ein === 'Glas' ? 'n' : 'en')));
+    help.textContent = `${dec(n)} ${einLabel} à ${dec(gi)} ${beLabel} = Gesamt ${dec(total)} ${beLabel}`;
+  }
+  document.getElementById('gebinde')?.addEventListener('input', updGebindeUI);
+  document.getElementById('basis')?.addEventListener('change', updGebindeUI);
 
   const updPreisPrev = () => {
     const el = document.getElementById('preisPrev'); if (!el) return;
@@ -1008,8 +1067,11 @@ function vForm(id) {
     const el = document.getElementById('chargenSum');
     if (!el) return;
     const n = lotCount(), s = lotSum(), ein = document.getElementById('ein')?.value?.trim() || it.einheit || '';
-    el.textContent = `Gesamt: ${dec(s)}${ein ? ' ' + ein : ''} · ${n} ${n === 1 ? 'Charge' : 'Chargen'}`;
+    const emptyN = listLots().filter(isEmptyLot).length;
+    el.textContent = `Gesamt: ${dec(s)}${ein ? ' ' + ein : ''} · ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}`
+      + (emptyN ? ` · ${emptyN} leer (zählen nicht)` : '');
     updPreisPrev();
+    updGebindeUI();
   }
 
   function ortOptions(sel) {
@@ -1044,23 +1106,27 @@ function vForm(id) {
         if (db) db.onclick = e => { e.preventDefault(); draftLots = draftLots.filter(x => x._k !== k); renderChargen(); };
       });
     } else {
-      const lots = vstate.chargen[it.id] || [];
-      box.innerHTML = lots.map((l) => `<div class="card charge-card" style="margin:0" data-cid="${l.id}">
+      const lots = listLots();
+      box.innerHTML = lots.map((l) => {
+        const key = l._draft ? `d${l._k}` : `c${l.id}`;
+        const idAttr = l._draft ? `data-dk="${l._k}"` : `data-cid="${l.id}"`;
+        return `<div class="card charge-card" style="margin:0" ${idAttr}>
         <div class="mhd-row">
-          <label class="mhd-inline" for="menge_c${l.id}">Menge</label>
-          <input id="menge_c${l.id}" data-f="menge" inputmode="decimal" value="${decIn(l.menge)}" aria-label="Menge">
+          <label class="mhd-inline" for="menge_${key}">Menge</label>
+          <input id="menge_${key}" data-f="menge" inputmode="decimal" value="${decIn(l.menge)}" aria-label="Menge">
           <span class="muted mhd-unit">${esc(unit)}</span>
           <span class="mhd-dot">·</span>
-          <label class="mhd-inline" for="mhd_c${l.id}">MHD</label>
-          <input id="mhd_c${l.id}" data-f="mhd" type="date" value="${esc(l.mhd || '')}" aria-label="MHD">
-          <button type="button" class="btn small danger mhd-x" data-del-c title="Entfernen">✕</button>
+          <label class="mhd-inline" for="mhd_${key}">MHD</label>
+          <input id="mhd_${key}" data-f="mhd" type="date" value="${esc(l.mhd || '')}" aria-label="MHD">
+          <button type="button" class="btn small danger mhd-x" data-del-x title="Entfernen">✕</button>
         </div>
-        <details class="mhd-more"><summary class="muted">Notiz / Ort</summary>
-          <label for="ort_c${l.id}">Ort</label><select id="ort_c${l.id}" data-f="ort_id">${ortOptions(l.ort_id)}</select>
-          <label for="notiz_c${l.id}">Notiz</label><input id="notiz_c${l.id}" data-f="notiz" value="${esc(l.notiz || '')}">
+        ${l._draft ? '' : `<details class="mhd-more"><summary class="muted">Notiz / Ort</summary>
+          <label for="ort_${key}">Ort</label><select id="ort_${key}" data-f="ort_id">${ortOptions(l.ort_id)}</select>
+          <label for="notiz_${key}">Notiz</label><input id="notiz_${key}" data-f="notiz" value="${esc(l.notiz || '')}">
           <button type="button" class="btn small secondary" data-save-c style="margin-top:.4rem">💾 Charge speichern</button>
-        </details>
-      </div>`).join('') || '<p class="muted">Noch kein Eintrag – bitte hinzufügen.</p>';
+        </details>`}
+      </div>`;
+      }).join('') || '<p class="muted">Noch kein Eintrag – bitte hinzufügen.</p>';
       box.querySelectorAll('[data-save-c]').forEach(btn => btn.onclick = async e => {
         e.preventDefault();
         const card = btn.closest('[data-cid]'); const cid = Number(card.dataset.cid);
@@ -1076,46 +1142,70 @@ function vForm(id) {
         const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
         toast('Gespeichert.'); renderChargen();
       });
-      box.querySelectorAll('[data-del-c]').forEach(btn => btn.onclick = async e => {
+      box.querySelectorAll('[data-del-x]').forEach(btn => btn.onclick = async e => {
         e.preventDefault();
+        const card = btn.closest('[data-cid],[data-dk]');
+        if (card.dataset.dk) {
+          editDrafts = editDrafts.filter(x => x._k !== Number(card.dataset.dk));
+          renderChargen();
+          return;
+        }
         if (!confirm('Diesen MHD-Eintrag löschen?')) return;
-        const cid = Number(btn.closest('[data-cid]').dataset.cid);
+        const cid = Number(card.dataset.cid);
         const { error } = await sb.from('vorrat_chargen').delete().eq('id', cid); if (error) return fail(error);
-        vstate.chargen[it.id] = (vstate.chargen[it.id] || []).filter(x => x.id !== cid);
+        vstate.chargen[it.id] = dbLots().filter(x => x.id !== cid);
         const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
         renderChargen();
       });
-      // live update lot fields into memory for main Speichern flush
       box.querySelectorAll('[data-cid]').forEach(card => {
         const cid = Number(card.dataset.cid);
-        const lot = (vstate.chargen[it.id] || []).find(x => x.id === cid);
+        const lot = dbLots().find(x => x.id === cid);
         if (!lot) return;
         card.querySelector('[data-f=menge]').oninput = e => { try { lot.menge = parseDec(e.target.value) ?? 0; } catch { } updSumLabel(); };
-        card.querySelector('[data-f=mhd]').onchange = e => { lot.mhd = e.target.value || null; };
+        card.querySelector('[data-f=mhd]').onchange = e => { lot.mhd = e.target.value || null; updSumLabel(); };
+      });
+      box.querySelectorAll('[data-dk]').forEach(card => {
+        const k = Number(card.dataset.dk);
+        const lot = editDrafts.find(x => x._k === k);
+        if (!lot) return;
+        card.querySelector('[data-f=menge]').oninput = e => { try { lot.menge = parseDec(e.target.value) ?? 0; } catch { lot.menge = 0; } updSumLabel(); };
+        card.querySelector('[data-f=mhd]').onchange = e => { lot.mhd = e.target.value || ''; updSumLabel(); };
       });
     }
     updSumLabel();
   }
 
-  document.getElementById('addCharge').onclick = async () => {
-    if (isNew) {
-      draftLots.push({ _k: draftKey++, menge: 1, mhd: '', ort_id: null, notiz: '' });
+  document.getElementById('addCharge').onclick = e => {
+    e.preventDefault();
+    const empty = listLots().find(isEmptyLot);
+    if (empty) {
       renderChargen();
+      const sel = empty._draft
+        ? `[data-dk="${empty._k}"]`
+        : (empty._k != null && isNew ? `[data-k="${empty._k}"]` : `[data-cid="${empty.id}"]`);
+      const card = document.querySelector(sel);
+      const inp = card?.querySelector('[data-f=menge]');
+      if (inp) { inp.focus(); inp.select?.(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      toast('Leere Zeile nutzen – Menge/MHD eintragen');
       return;
     }
-    const { data, error } = await sb.from('vorrat_chargen').insert({
-      vorrat_id: it.id, user_id: owner(), menge: 0, mhd: null,
-      ort_id: oSel.value ? Number(oSel.value) : it.ort_id || null,
-    }).select().single();
-    if (error) return fail(error);
-    (vstate.chargen[it.id] ||= []).push(data);
+    if (isNew) {
+      const k = draftKey++;
+      draftLots.push({ _k: k, menge: 0, mhd: '', ort_id: null, notiz: '' });
+      renderChargen();
+      document.querySelector(`[data-k="${k}"]`)?.querySelector('[data-f=menge]')?.focus();
+      return;
+    }
+    // Bestehend: nur lokaler Entwurf – kein leeres DB-Phantom
+    const k = draftKey++;
+    editDrafts.push({ _draft: true, _k: k, menge: 0, mhd: '', ort_id: null, notiz: '' });
     renderChargen();
+    document.querySelector(`[data-dk="${k}"]`)?.querySelector('[data-f=menge]')?.focus();
   };
 
-  // Namens-Vorschläge (Pause / change) – Button einmal binden, Text aktualisieren
+  // Namens-Vorschläge – form-delegated apply, robust writers
   const hintEl = document.getElementById('nameHint');
   const hintText = document.getElementById('nameHintText');
-  const applyBtn = document.getElementById('applyHint');
   let hintTimer = null, lastSug = null;
   function applySuggest(sug, { force = false } = {}) {
     if (!sug) return false;
@@ -1123,22 +1213,24 @@ function vForm(id) {
     const ein = document.getElementById('ein');
     const min = document.getElementById('min');
     if (!kat || !ein || !min) {
-      console.error('[vForm] applySuggest: Felder fehlen', { kat: !!kat, ein: !!ein, min: !!min });
+      console.error('[vForm] applySuggest missing fields', { kat: !!kat, ein: !!ein, min: !!min });
       return false;
     }
+    let ok = true;
     if (sug.kategorie && (force || !String(kat.value || '').trim())) {
-      kat.value = sug.kategorie;
+      ok = writeInputValue(kat, sug.kategorie) && ok;
       syncSuggestPick('kat', sug.kategorie);
       if (force) touched.kat = true;
     }
     if (sug.einheit && (force || !String(ein.value || '').trim() || (!touched.ein && ein.value === 'Stück'))) {
-      ein.value = sug.einheit;
+      ok = writeInputValue(ein, sug.einheit) && ok;
       syncSuggestPick('ein', sug.einheit);
       if (force) touched.ein = true;
+      updGebindeUI();
       renderChargen();
     }
     if (sug.mindestbestand != null && (force || !String(min.value || '').trim())) {
-      min.value = decIn(sug.mindestbestand);
+      ok = writeInputValue(min, decIn(sug.mindestbestand)) && ok;
       if (force) touched.min = true;
     }
     if (sug.ort_id && (force || !oSel.value)) {
@@ -1146,12 +1238,13 @@ function vForm(id) {
       if (force) touched.ort = true;
       const det = document.getElementById('moreDetails'); if (det && force) det.open = true;
     }
-    // Sichtbarkeit erzwingen (manche Mobile-Browser zeichnen value sonst nicht neu)
-    kat.dispatchEvent(new Event('input', { bubbles: true }));
-    ein.dispatchEvent(new Event('input', { bubbles: true }));
-    min.dispatchEvent(new Event('input', { bubbles: true }));
     updSumLabel();
-    return true;
+    if (force) {
+      if (sug.kategorie && kat.value !== String(sug.kategorie)) { console.error('[vForm] kat mismatch', kat.value, sug.kategorie); ok = false; }
+      if (sug.einheit && ein.value !== String(sug.einheit)) { console.error('[vForm] ein mismatch', ein.value, sug.einheit); ok = false; }
+      if (sug.mindestbestand != null && String(min.value) !== decIn(sug.mindestbestand)) { console.error('[vForm] min mismatch', min.value); ok = false; }
+    }
+    return ok;
   }
   function showHint() {
     const name = document.getElementById('name').value.trim();
@@ -1170,22 +1263,30 @@ function vForm(id) {
     const src = sug.source === 'prev' ? `wie „${sug.label}“` : 'Vorschlag';
     if (hintText) hintText.innerHTML = `${esc(src)}: <b>${esc(parts.join(' · '))}</b>`;
     hintEl.classList.remove('hidden');
-    // Auto nur leere Felder
     applySuggest(sug, { force: false });
   }
-  applyBtn.onclick = e => {
+  const formEl = document.getElementById('f');
+  formEl.addEventListener('click', e => {
+    const btn = e.target.closest('#applyHint');
+    if (!btn) return;
     e.preventDefault();
     e.stopPropagation();
     const sug = lastSug || productSuggest(document.getElementById('name').value.trim(), it.id);
     if (!sug) return toast('Kein Vorschlag für diesen Namen.');
     const ok = applySuggest(sug, { force: true });
-    if (ok) toast('Alle Vorschläge übernommen ✔');
-    else console.error('[vForm] applySuggest failed', sug);
-  };
+    toast(ok ? 'Alle Vorschläge übernommen ✔' : 'Übernehmen fehlgeschlagen – bitte erneut tippen');
+    if (!ok) console.error('[vForm] apply failed', sug, {
+      kat: document.getElementById('kat')?.value,
+      ein: document.getElementById('ein')?.value,
+      min: document.getElementById('min')?.value,
+    });
+  });
   const nameEl = document.getElementById('name');
   nameEl.addEventListener('input', () => { clearTimeout(hintTimer); hintTimer = setTimeout(showHint, 450); });
   nameEl.addEventListener('change', showHint);
+  nameEl.addEventListener('blur', showHint);
   if (it.name) showHint();
+  updGebindeUI();
 
   const del = document.getElementById('del');
   if (del) del.onclick = async () => {
@@ -1197,23 +1298,34 @@ function vForm(id) {
   async function save(more) {
     const btns = app.querySelectorAll('form button'); btns.forEach(b => b.disabled = true);
     try {
+      const einVal = document.getElementById('ein').value.trim() || null;
+      let gebinde_inhalt = null, basis_einheit = null;
+      if (isPackUnit(einVal)) {
+        gebinde_inhalt = parseDec(document.getElementById('gebinde').value);
+        basis_einheit = document.getElementById('basis').value || null;
+        if (gebinde_inhalt != null && !basis_einheit) throw new Error('Bitte Basis-Einheit zum Inhalt wählen (z.B. Liter).');
+        if (basis_einheit && gebinde_inhalt == null) throw new Error('Bitte Inhalt je Packung eingeben.');
+      }
       const row = {
         name: document.getElementById('name').value.trim(),
         angebotsname: document.getElementById('angebotsname').value.trim() || null,
         kategorie: document.getElementById('kat').value.trim() || null,
-        einheit: document.getElementById('ein').value.trim() || null,
+        einheit: einVal,
         mindestbestand: parseDec(document.getElementById('min').value),
         preis: parseDec(document.getElementById('preis').value),
         ort_id: oSel.value ? Number(oSel.value) : null,
         barcode: document.getElementById('bc').value.trim() || null,
         notiz: document.getElementById('notiz').value.trim() || null,
+        gebinde_inhalt,
+        basis_einheit,
       };
       if (!row.name) throw new Error('Bitte einen Namen eingeben.');
       if (isNew) {
-        // Draft-Chargen einsammeln (DOM → draftLots bereits aktuell)
-        if (!draftLots.length) draftLots = [{ _k: 1, menge: 1, mhd: '', ort_id: row.ort_id, notiz: '' }];
-        const sum = draftLots.reduce((s, l) => s + Math.max(0, Number(l.menge) || 0), 0);
-        const withMhd = draftLots.filter(l => l.mhd).map(l => l.mhd).sort();
+        const lots = draftLots.filter(l => !isEmptyLot(l));
+        const use = lots.length ? lots : [{ _k: 1, menge: 0, mhd: '', ort_id: row.ort_id, notiz: '' }];
+        draftLots = use;
+        const sum = use.reduce((s, l) => s + Math.max(0, Number(l.menge) || 0), 0);
+        const withMhd = use.filter(l => l.mhd).map(l => l.mhd).sort();
         row.menge = sum;
         row.mhd = withMhd[0] || null;
       }
@@ -1227,7 +1339,6 @@ function vForm(id) {
         row.bild_url = path;
       }
       if (!isNew) {
-        // Offene Chargen-Eingaben mit Speichern mitschreiben
         const cards = [...document.querySelectorAll('#chargenList [data-cid]')];
         for (const card of cards) {
           const cid = Number(card.dataset.cid);
@@ -1241,6 +1352,19 @@ function vForm(id) {
           if (ur.error) throw ur.error;
           const arr = vstate.chargen[it.id] || [];
           const ix = arr.findIndex(x => x.id === cid); if (ix >= 0) arr[ix] = ur.data;
+        }
+        const toInsert = editDrafts.filter(l => !isEmptyLot(l)).map(l => ({
+          vorrat_id: it.id, user_id: owner(),
+          menge: Math.max(0, Number(l.menge) || 0),
+          mhd: l.mhd || null,
+          ort_id: row.ort_id,
+          notiz: (l.notiz || '').trim() || null,
+        }));
+        if (toInsert.length) {
+          const ins = await sb.from('vorrat_chargen').insert(toInsert).select();
+          if (ins.error) throw ins.error;
+          (vstate.chargen[it.id] ||= []).push(...(ins.data || []));
+          editDrafts = [];
         }
       }
       const r = isNew ? await sb.from('vorrat').insert({ ...row, user_id: owner() }).select().single() : await sb.from('vorrat').update(row).eq('id', it.id).select().single();

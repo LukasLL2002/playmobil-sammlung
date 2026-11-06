@@ -154,3 +154,6 @@ input,select,textarea{box-sizing:border-box;max-width:100%}
 input[type=number]{-moz-appearance:textfield;appearance:textfield}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .name-hint{width:100%;box-sizing:border-box}
+
+.suggest-applied{border-color:#2e7d32!important;box-shadow:0 0 0 2px rgba(46,125,50,.25)}
+#gebindeBox{margin:.2rem 0 .5rem}
