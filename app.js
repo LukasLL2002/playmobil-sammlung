@@ -23,6 +23,28 @@ const priceLine = (unit, qty) => {
   return euro(u);
 };
 const priceLineHtml = (unit, qty) => { const t = priceLine(unit, qty); return t ? `<div class="sub price">${esc(t)}</div>` : ''; };
+
+/** Eingabefeld + Auswahl-Select (statt datalist – auf Mobil zuverlässig). */
+function suggestField(id, value, suggestions, placeholder = '') {
+  const opts = [...new Set((suggestions || []).map(s => String(s).trim()).filter(Boolean))];
+  return `<div class="suggest">
+    <input id="${id}" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off">
+    <select id="${id}Pick" aria-label="Auswählen">
+      <option value="">▾ wählen</option>
+      ${opts.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+    </select></div>`;
+}
+function bindSuggest(id) {
+  const inp = document.getElementById(id), sel = document.getElementById(id + 'Pick');
+  if (!inp || !sel) return;
+  sel.onchange = () => {
+    if (!sel.value) return;
+    inp.value = sel.value;
+    sel.selectedIndex = 0;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.focus();
+  };
+}
 const num = n => (Number(n) || 0).toLocaleString('de-DE');
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const baseUrl = () => location.origin + location.pathname;
@@ -351,9 +373,8 @@ function teilForm(t) {
       </div>
       <div class="grid2">
         <div><label for="nr">Teile-Nr.</label><input id="nr" value="${esc(t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340"></div>
-        <div><label for="farbe">Farbe</label><input id="farbe" value="${esc(t.farbe)}" list="farbliste" placeholder="z.B. rot"></div>
+        <div><label for="farbe">Farbe</label>${suggestField('farbe', t.farbe, [...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'], 'z.B. rot')}</div>
       </div>
-      <datalist id="farbliste">${[...new Set([...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'])].map(x => `<option value="${esc(x)}">`).join('')}</datalist>
       <label for="beschr">Beschreibung</label><input id="beschr" value="${esc(t.beschreibung)}" placeholder="z.B. Ritterhelm mit Visier">
       <div class="grid2">
         <div><label for="anz">Anzahl</label><input id="anz" type="number" min="0" step="1" inputmode="numeric" value="${esc(t.anzahl ?? 1)}"></div>
@@ -380,6 +401,7 @@ function teilForm(t) {
   document.getElementById('newSet').onclick = async () => { const s = await setDialog(); if (s) { chosenSets.push(s.id); fillSets(); } };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  bindSuggest('farbe');
   const updEurPrev = () => {
     const el = document.getElementById('eurPrev'); if (!el) return;
     try {
@@ -844,11 +866,9 @@ function vForm(id) {
       <label for="angebotsname">Angebotsname <span class="muted">(für Prospekt-Suche, z.B. Milch)</span></label>
       <input id="angebotsname" value="${esc(it.angebotsname || '')}" placeholder="leer = aus Artikelname">
       <div class="grid2">
-        <div><label for="kat">Kategorie</label><input id="kat" list="katliste" value="${esc(it.kategorie)}" placeholder="z.B. Konserven"></div>
-        <div><label for="ein">Einheit</label><input id="ein" list="einliste" value="${esc(it.einheit)}"></div>
+        <div><label for="kat">Kategorie</label>${suggestField('kat', it.kategorie, kats, 'z.B. Konserven')}</div>
+        <div><label for="ein">Einheit</label>${suggestField('ein', it.einheit, EINHEITEN, 'Stück')}</div>
       </div>
-      <datalist id="katliste">${kats.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
-      <datalist id="einliste">${EINHEITEN.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
       <div class="grid2">
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
         <div><label for="preis">Einzelpreis (€ pro Packung/Stück)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"><div id="preisPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
@@ -883,6 +903,7 @@ function vForm(id) {
   if (scan) document.getElementById('scanBc').onclick = async () => { const c = await scanBarcode(); if (c) document.getElementById('bc').value = c; };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  bindSuggest('kat'); bindSuggest('ein');
   const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
   const updPreisPrev = () => {
     const el = document.getElementById('preisPrev'); if (!el) return;

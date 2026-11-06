@@ -128,3 +128,8 @@ table.mini th{background:#f5f5f5}
 .price,.sub.price{color:#2e7d32;font-weight:600;font-size:.85rem}
 .right .price,.right .sub.price{text-align:right}
 .best-offer{background:#e8f5e9;border-left:4px solid #2e7d32;padding:.7rem;border-radius:10px;margin:.6rem 0}
+
+.suggest{display:grid;grid-template-columns:1fr minmax(6.5rem,auto);gap:.4rem;align-items:stretch}
+.suggest input{min-width:0}
+.suggest select{width:auto;min-width:6.5rem;cursor:pointer;appearance:auto;-webkit-appearance:menulist}
+select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}

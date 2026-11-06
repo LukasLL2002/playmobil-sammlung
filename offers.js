@@ -88,7 +88,7 @@ const MP_RETAILERS = [
   { keys: ['rewe'], slug: 'rewe-de' },
   { keys: ['lidl'], slug: 'lidl' },
   { keys: ['edeka', 'edeka center', 'edeka markt'], slug: 'edeka' },
-  { keys: ['penny'], slug: 'penny' },
+  { keys: ['penny'], slug: 'penny-de' },
   { keys: ['kaufland'], slug: 'kaufland' },
   { keys: ['netto marken', 'netto city', 'netto'], slug: 'netto-de' },
   { keys: ['dm-drogerie', 'dm drogerie', ' dm '], slug: 'dm-de', exact: ['dm'] },
@@ -181,8 +181,9 @@ function offerLinks(it, cityInfo) {
   const city = cityInfo.slug;
   const cityTc = cityInfo.title || cityTitle(cityInfo.city);
   // Nur bekannte öffentliche Listen-/Such-URLs – keine erfundenen Angebots-IDs
+  // Produktlisten: national /angebote/{slug} (Stadt-Produkt-Pfade wie /northeim/angebote/milch → 404)
   const all = {
-    meinprospekt: { id: 'meinprospekt', name: 'MeinProspekt', url: `https://www.meinprospekt.de/${city}/angebote/${pslug}` },
+    meinprospekt: { id: 'meinprospekt', name: 'MeinProspekt', url: `https://www.meinprospekt.de/angebote/${pslug}` },
     kaufda: { id: 'kaufda', name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(String(term).replace(/\s+/g, '-'))}` },
     marktguru: { id: 'marktguru', name: 'Marktguru', url: `https://www.marktguru.de/search/${q}` },
   };
@@ -235,7 +236,7 @@ async function openAngebote(it) {
       </div>` : `<p class="muted">Kein selbst erfasstes Angebot. Extern die Anbieter-Liste öffnen (keine Live-Preise in der App).</p>`}
 
       ${primary ? `<a class="btn block" id="aoOpen" style="background:#2e7d32;margin:.4rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">Beste Angebote bei ${esc(primary.name)} öffnen ↗</a>
-        <p class="muted" style="font-size:.85rem;margin:.2rem 0 .5rem">Suche: „${esc(pack.term)}“ in ${esc(info.city)} – gefilterte Angebotsseite beim Anbieter (kein Scraping).</p>
+        <p class="muted" style="font-size:.85rem;margin:.2rem 0 .5rem">„${esc(pack.term)}“ · Katalog beim Anbieter${info?.city ? ' (Ort: ' + esc(info.city) + ')' : ''}.</p>
         <div class="row" style="flex-wrap:wrap;gap:.4rem;align-items:center;margin-bottom:.6rem">
           <label class="muted" style="font-size:.85rem;margin:0">Quelle:</label>
           <select id="aoSrc" style="flex:1;min-width:8rem;margin:0">
