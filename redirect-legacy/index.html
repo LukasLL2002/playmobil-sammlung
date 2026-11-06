@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Weiterleitung zu Sortiva</title>
+<meta http-equiv="refresh" content="0;url=https://sortivaapp.github.io/">
+<script>
+(function () {
+  var dest = 'https://sortivaapp.github.io/';
+  var path = location.pathname || '';
+  // Strip /playmobil-sammlung prefix if present; keep rest of path after it
+  var m = path.match(/^\/playmobil-sammlung(\/.*)?$/);
+  if (m && m[1] && m[1] !== '/') dest += m[1].replace(/^\//, '');
+  dest += location.search || '';
+  dest += location.hash || '';
+  location.replace(dest);
+})();
+</script>
+</head>
+<body>
+<p>Weiterleitung zu <a href="https://sortivaapp.github.io/">Sortiva</a> …</p>
+</body>
+</html>
