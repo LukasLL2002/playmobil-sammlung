@@ -1,4 +1,4 @@
-// Playmobil-Sammlung – einfache Familien-App (Supabase + Vanilla JS)
+// Sortiva – sortieren & bewahren (Supabase + Vanilla JS)
 'use strict';
 
 const SUPABASE_URL = 'https://nmuwmlmrmktjhquanejk.supabase.co';
@@ -188,7 +188,7 @@ function renderLogin() {
   app.innerHTML = `
   <div class="login card">
     <div class="logo">🧸</div>
-    <h1 class="center">Playmobil-Sammlung</h1>
+    <h1 class="center">Sortiva</h1>
     <p class="center muted">Bitte melde dich an, um die Familien-Sammlung zu sehen.</p>
     <form id="loginForm">
       <label for="em">E-Mail</label>
@@ -234,9 +234,9 @@ function setMode(mode, tab) {
   document.body.classList.toggle('mode-lego', mode === 'lego');
   document.body.classList.toggle('mode-c', String(mode).startsWith('c'));
   if (!String(mode).startsWith('c')) localStorage.setItem('modus', mode);
-  if (mode === 'v') { document.getElementById('brand').textContent = '🥫 Vorratskammer'; document.getElementById('brand').href = '#v/liste'; }
-  else if (mode === 'lego') { document.getElementById('brand').textContent = '🧱 LEGO'; document.getElementById('brand').href = '#l/teile'; }
-  else if (!String(mode).startsWith('c')) { document.getElementById('brand').textContent = '🧸 Playmobil-Sammlung'; document.getElementById('brand').href = '#teile'; }
+  if (mode === 'v') { document.getElementById('brand').textContent = '📦 Sortiva · Vorrat'; document.getElementById('brand').href = '#v/liste'; }
+  else if (mode === 'lego') { document.getElementById('brand').textContent = '📦 Sortiva · LEGO'; document.getElementById('brand').href = '#l/teile'; }
+  else if (!String(mode).startsWith('c')) { document.getElementById('brand').textContent = '📦 Sortiva'; document.getElementById('brand').href = '#teile'; }
   document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
   const nav = document.getElementById('tabbar');
   const pend = pendingCount();
