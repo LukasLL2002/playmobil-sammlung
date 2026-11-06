@@ -677,8 +677,58 @@ function viewPasswort() {
 // ---------- Bereich: Vorratskammer ----------
 // =====================================================================
 const vstate = { loaded: false, orte: [], items: [], chargen: {}, filter: { q: '', kat: '', ort: '', nur: '' } };
-const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Haushalt', 'Sonstiges'];
+const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Gemüse', 'Obst', 'Milchprodukte', 'Fleisch & Wurst', 'Fisch', 'Brot & Backwaren', 'Süßigkeiten', 'Haushalt', 'Sonstiges'];
 const EINHEITEN = ['Stück', 'Packung', 'Dose', 'Glas', 'Flasche', 'kg', 'g', 'l', 'ml'];
+/** Lokale Produkt→Kategorie/Einheit-Hinweise (kein Netz). */
+const PRODUCT_HINTS = [
+  { keys: ['tomat', 'gurke', 'zucchini', 'paprika', 'karotte', 'möhre', 'moehre', 'zwiebel', 'knoblauch', 'salat', 'spinat', 'kohl', 'brokkoli', 'blumenkohl', 'bohne', 'erbse', 'mais', 'kartoffel', 'gemüse', 'gemuese'], kat: 'Gemüse', ein: 'kg', min: 1 },
+  { keys: ['apfel', 'birne', 'banane', 'orange', 'zitrone', 'beere', 'traube', 'kiwi', 'mango', 'obst', 'früchte', 'fruechte'], kat: 'Obst', ein: 'kg', min: 1 },
+  { keys: ['milch', 'joghurt', 'quark', 'sahne', 'käse', 'kaese', 'frischkäse', 'frischkaese', 'schmand', 'molke'], kat: 'Milchprodukte', ein: 'l' },
+  { keys: ['butter', 'margarine'], kat: 'Milchprodukte', ein: 'Packung' },
+  { keys: ['wurst', 'salami', 'schinken', 'hack', 'fleisch', 'steak', 'hähnchen', 'haehnchen', 'huhn', 'pute', 'rind', 'schwein'], kat: 'Fleisch & Wurst', ein: 'kg' },
+  { keys: ['fisch', 'lachs', 'thunfisch', 'hering', 'forelle'], kat: 'Fisch', ein: 'Packung' },
+  { keys: ['brot', 'brötchen', 'broetchen', 'toast', 'baguette'], kat: 'Brot & Backwaren', ein: 'Stück' },
+  { keys: ['wasser', 'saft', 'cola', 'limo', 'limonade', 'bier', 'wein', 'schorle', 'tee', 'kaffee'], kat: 'Getränke', ein: 'l' },
+  { keys: ['nudel', 'spaghetti', 'penne', 'macaroni'], kat: 'Nudeln', ein: 'kg' },
+  { keys: ['reis', 'couscous', 'quinoa', 'mehl', 'hafer', 'getreide'], kat: 'Reis & Getreide', ein: 'kg' },
+  { keys: ['dose', 'konserve', 'eingelegt'], kat: 'Konserven', ein: 'Dose' },
+  { keys: ['tiefkühl', 'tiefkuehl', 'tk-', 'frozen', 'eis '], kat: 'Tiefkühl', ein: 'Packung' },
+  { keys: ['müsli', 'muesli', 'cornflakes', 'marmelade', 'honig', 'nutella'], kat: 'Frühstück', ein: 'Packung' },
+  { keys: ['chips', 'cracker', 'riegel', 'schokolade', 'gummi', 'süß', 'suess'], kat: 'Snacks', ein: 'Packung' },
+  { keys: ['gewürz', 'gewuerz', 'pfeffer', 'salz', 'paprikapulver', 'curry', 'oregano'], kat: 'Gewürze', ein: 'Stück' },
+  { keys: ['spül', 'spuel', 'waschmittel', 'putz', 'toilettenpapier', 'müllbeutel', 'muellbeutel'], kat: 'Haushalt', ein: 'Packung' },
+];
+function findSimilarVorrat(name, excludeId) {
+  const n = norm(name).trim();
+  if (n.length < 2) return null;
+  const list = vstate.items.filter(i => i.id !== excludeId);
+  let hit = list.find(i => norm(i.name) === n);
+  if (hit) return hit;
+  hit = list.find(i => { const m = norm(i.name); return m.length >= 3 && (m.includes(n) || n.includes(m)); });
+  return hit || null;
+}
+function dictProductHint(name) {
+  const n = norm(name);
+  if (n.length < 3) return null;
+  for (const h of PRODUCT_HINTS) {
+    if (h.keys.some(k => n.includes(norm(k)))) return { kategorie: h.kat, einheit: h.ein, mindestbestand: h.min ?? null, source: 'dict' };
+  }
+  return null;
+}
+function productSuggest(name, excludeId) {
+  const prev = findSimilarVorrat(name, excludeId);
+  if (prev) {
+    return {
+      kategorie: prev.kategorie || null,
+      einheit: prev.einheit || null,
+      mindestbestand: prev.mindestbestand != null ? prev.mindestbestand : null,
+      ort_id: prev.ort_id || null,
+      source: 'prev',
+      label: prev.name,
+    };
+  }
+  return dictProductHint(name);
+}
 const ortById = id => vstate.orte.find(o => o.id === Number(id));
 const ortUrl = id => baseUrl() + '#v/ort/' + id;
 const dec = n => (Number(n) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
@@ -858,11 +908,27 @@ function vForm(id) {
   const scan = 'BarcodeDetector' in window;
   const kats = [...new Set([...KATEGORIEN, ...vstate.items.map(i => i.kategorie).filter(Boolean)])];
   const decIn = v => v == null ? '' : String(v).replace('.', ',');
+  // Draft-Chargen für neue Artikel; bei Bearbeitung live aus DB
+  let draftLots = isNew
+    ? [{ _k: 1, menge: it.menge ?? 1, mhd: it.mhd || '', ort_id: it.ort_id || null, notiz: '' }]
+    : null;
+  let draftKey = 2;
+  const touched = { kat: !!it.kategorie, ein: !!(it.einheit && !(isNew && it.einheit === 'Stück' && !pre.get('einheit'))), min: it.mindestbestand != null, ort: !!it.ort_id };
+  // Neue Artikel: Einheit „Stück“ Default zählt als unberührt, damit Vorschlag greifen kann
+  if (isNew && !pre.get('einheit')) touched.ein = false;
+
+  const lotSum = () => {
+    if (isNew) return draftLots.reduce((s, l) => s + (Number(l.menge) || 0), 0);
+    return Number(it.menge) || 0;
+  };
+  const lotCount = () => isNew ? draftLots.length : (vstate.chargen[it.id] || []).length;
+
   app.innerHTML = `
     <a class="back" href="#v/liste">‹ Zurück</a>
     <h1>${isNew ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
     <form id="f" class="card">
-      <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt">
+      <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt" autocomplete="off">
+      <div id="nameHint" class="name-hint hidden"></div>
       <label for="angebotsname">Angebotsname <span class="muted">(für Prospekt-Suche, z.B. Milch)</span></label>
       <input id="angebotsname" value="${esc(it.angebotsname || '')}" placeholder="leer = aus Artikelname">
       <div class="grid2">
@@ -873,14 +939,15 @@ function vForm(id) {
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
         <div><label for="preis">Einzelpreis (€ pro Packung/Stück)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"><div id="preisPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
       </div>
-      ${isNew ? `<div class="grid2"><div><label for="menge">Menge (erste Charge)</label><input id="menge" inputmode="decimal" value="${decIn(it.menge)}"></div>
-        <div><label for="mhd">MHD</label><input id="mhd" type="date" value="${esc(it.mhd || '')}"></div></div>`
-        : `<div id="chargenBox"><label>Chargen / MHD <span class="muted">(Gesamt: ${dec(it.menge)})</span></label>
+      <div id="chargenBox">
+        <h2 style="margin:.6rem 0 .3rem">Mengen &amp; MHDs</h2>
+        <p class="muted" id="chargenSum" style="margin:0 0 .5rem"></p>
         <div id="chargenList" class="list"></div>
-        <button type="button" class="btn small secondary" id="addCharge">＋ Charge / MHD</button></div>
-        <p><button type="button" class="btn small secondary" id="btnOffer">🛒 Angebote in der Nähe</button>
+        <button type="button" class="btn small secondary" id="addCharge">＋ Weitere Menge / weiteres MHD hinzufügen</button>
+      </div>
+      ${isNew ? '' : `<p style="margin-top:.8rem"><button type="button" class="btn small secondary" id="btnOffer">🛒 Angebote in der Nähe</button>
         <a class="btn small secondary" href="#v/plz">📍 PLZ</a></p>`}
-      <label for="ort">Ort</label>
+      <label for="ort">Ort <span class="muted">(Standard)</span></label>
       <div class="row"><select id="ort" style="flex:1"></select><button type="button" class="btn small secondary" id="newOrt">＋ Neu</button></div>
       <label for="bc">Barcode (optional)</label>
       <div class="row"><input id="bc" style="flex:1" inputmode="numeric" value="${esc(it.barcode)}">${scan ? '<button type="button" class="btn small secondary" id="scanBc">▥ Scannen</button>' : ''}</div>
@@ -899,57 +966,149 @@ function vForm(id) {
   const oSel = document.getElementById('ort');
   const fillOrte = sel => { oSel.innerHTML = '<option value="">– kein Ort –</option>' + vstate.orte.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join(''); oSel.value = sel ?? ''; };
   fillOrte(it.ort_id);
-  document.getElementById('newOrt').onclick = async () => { const o = await ortDialog(); if (o) fillOrte(o.id); };
+  document.getElementById('newOrt').onclick = async () => { const o = await ortDialog(); if (o) { fillOrte(o.id); touched.ort = true; renderChargen(); } };
+  oSel.onchange = () => { touched.ort = true; };
   if (scan) document.getElementById('scanBc').onclick = async () => { const c = await scanBarcode(); if (c) document.getElementById('bc').value = c; };
   const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
   document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
   bindSuggest('kat'); bindSuggest('ein');
+  document.getElementById('kat').addEventListener('input', () => { touched.kat = true; });
+  document.getElementById('ein').addEventListener('input', () => { touched.ein = true; });
+  document.getElementById('min').addEventListener('input', () => { touched.min = true; });
+  const katPick = document.getElementById('katPick'); if (katPick) katPick.addEventListener('change', () => { touched.kat = true; });
+  const einPick = document.getElementById('einPick'); if (einPick) einPick.addEventListener('change', () => { touched.ein = true; });
   const bo = document.getElementById('btnOffer'); if (bo) bo.onclick = () => openAngebote(it);
+
   const updPreisPrev = () => {
     const el = document.getElementById('preisPrev'); if (!el) return;
     try {
       const u = parseDec(document.getElementById('preis').value);
-      const qEl = document.getElementById('menge');
-      const q = qEl ? (parseDec(qEl.value) ?? 0) : Number(it.menge) || 0;
+      const q = lotSum();
       el.textContent = u != null ? priceLine(u, q) : '';
     } catch { el.textContent = ''; }
   };
   document.getElementById('preis').oninput = updPreisPrev;
-  const mengeEl = document.getElementById('menge'); if (mengeEl) mengeEl.oninput = updPreisPrev;
-  updPreisPrev();
+
+  function updSumLabel() {
+    const el = document.getElementById('chargenSum');
+    if (!el) return;
+    const n = lotCount(), s = lotSum(), ein = document.getElementById('ein')?.value?.trim() || it.einheit || '';
+    el.textContent = `Gesamt: ${dec(s)}${ein ? ' ' + ein : ''} · ${n} ${n === 1 ? 'Charge' : 'Chargen'}`;
+    updPreisPrev();
+  }
+
+  function ortOptions(sel) {
+    return '<option value="">– Ort –</option>' + vstate.orte.map(o => `<option value="${o.id}" ${String(o.id) === String(sel || '') ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+  }
+
   function renderChargen() {
     const box = document.getElementById('chargenList'); if (!box) return;
-    const lots = vstate.chargen[it.id] || [];
-    box.innerHTML = lots.map(l => `<div class="card" style="margin:0" data-cid="${l.id}">
-      <div class="grid2"><div><label>Menge</label><input data-f="menge" inputmode="decimal" value="${decIn(l.menge)}"></div>
-        <div><label>MHD</label><input data-f="mhd" type="date" value="${esc(l.mhd || '')}"></div></div>
-      <label>Notiz</label><input data-f="notiz" value="${esc(l.notiz || '')}">
-      <div class="row" style="margin-top:.4rem"><button type="button" class="btn small secondary" data-save-c>💾</button>
-        <button type="button" class="btn small danger" data-del-c>🗑️</button></div></div>`).join('') || '<p class="muted">Keine Chargen – mit „＋ Charge“ anlegen.</p>';
-    box.querySelectorAll('[data-save-c]').forEach(btn => btn.onclick = async () => {
-      const card = btn.closest('[data-cid]'); const cid = Number(card.dataset.cid);
-      const row = { menge: Math.max(0, parseDec(card.querySelector('[data-f=menge]').value) ?? 0), mhd: card.querySelector('[data-f=mhd]').value || null, notiz: card.querySelector('[data-f=notiz]').value.trim() || null };
-      const { data, error } = await sb.from('vorrat_chargen').update(row).eq('id', cid).select().single();
-      if (error) return fail(error);
-      const arr = vstate.chargen[it.id]; const i = arr.findIndex(x => x.id === cid); arr[i] = data;
-      const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
-      toast('Charge gespeichert.'); renderChargen();
-    });
-    box.querySelectorAll('[data-del-c]').forEach(btn => btn.onclick = async () => {
-      if (!confirm('Charge löschen?')) return;
-      const cid = Number(btn.closest('[data-cid]').dataset.cid);
-      const { error } = await sb.from('vorrat_chargen').delete().eq('id', cid); if (error) return fail(error);
-      vstate.chargen[it.id] = (vstate.chargen[it.id] || []).filter(x => x.id !== cid);
-      const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
-      renderChargen();
-    });
+    if (isNew) {
+      box.innerHTML = draftLots.map((l, idx) => `<div class="card charge-card" style="margin:0" data-k="${l._k}">
+        <div class="muted" style="font-size:.85rem;margin-bottom:.3rem">Menge ${idx + 1}</div>
+        <div class="grid2"><div><label>Menge</label><input data-f="menge" inputmode="decimal" value="${decIn(l.menge)}"></div>
+          <div><label>MHD</label><input data-f="mhd" type="date" value="${esc(l.mhd || '')}"></div></div>
+        <label>Ort (optional)</label><select data-f="ort_id">${ortOptions(l.ort_id)}</select>
+        <label>Notiz</label><input data-f="notiz" value="${esc(l.notiz || '')}">
+        ${draftLots.length > 1 ? '<button type="button" class="btn small danger" data-del-d style="margin-top:.4rem">🗑️ Entfernen</button>' : ''}
+      </div>`).join('');
+      box.querySelectorAll('[data-k]').forEach(card => {
+        const k = Number(card.dataset.k);
+        const lot = draftLots.find(x => x._k === k);
+        card.querySelector('[data-f=menge]').oninput = e => { try { lot.menge = parseDec(e.target.value) ?? 0; } catch { lot.menge = 0; } updSumLabel(); };
+        card.querySelector('[data-f=mhd]').onchange = e => { lot.mhd = e.target.value || ''; };
+        card.querySelector('[data-f=ort_id]').onchange = e => { lot.ort_id = e.target.value ? Number(e.target.value) : null; };
+        card.querySelector('[data-f=notiz]').oninput = e => { lot.notiz = e.target.value; };
+        const db = card.querySelector('[data-del-d]');
+        if (db) db.onclick = () => { draftLots = draftLots.filter(x => x._k !== k); renderChargen(); };
+      });
+    } else {
+      const lots = vstate.chargen[it.id] || [];
+      box.innerHTML = lots.map((l, idx) => `<div class="card charge-card" style="margin:0" data-cid="${l.id}">
+        <div class="muted" style="font-size:.85rem;margin-bottom:.3rem">Menge ${idx + 1}</div>
+        <div class="grid2"><div><label>Menge</label><input data-f="menge" inputmode="decimal" value="${decIn(l.menge)}"></div>
+          <div><label>MHD</label><input data-f="mhd" type="date" value="${esc(l.mhd || '')}"></div></div>
+        <label>Ort (optional)</label><select data-f="ort_id">${ortOptions(l.ort_id)}</select>
+        <label>Notiz</label><input data-f="notiz" value="${esc(l.notiz || '')}">
+        <div class="row" style="margin-top:.4rem"><button type="button" class="btn small secondary" data-save-c>💾 Charge speichern</button>
+          <button type="button" class="btn small danger" data-del-c>🗑️</button></div></div>`).join('')
+        || '<p class="muted">Noch keine Charge – bitte hinzufügen.</p>';
+      box.querySelectorAll('[data-save-c]').forEach(btn => btn.onclick = async () => {
+        const card = btn.closest('[data-cid]'); const cid = Number(card.dataset.cid);
+        const row = {
+          menge: Math.max(0, parseDec(card.querySelector('[data-f=menge]').value) ?? 0),
+          mhd: card.querySelector('[data-f=mhd]').value || null,
+          ort_id: card.querySelector('[data-f=ort_id]').value ? Number(card.querySelector('[data-f=ort_id]').value) : null,
+          notiz: card.querySelector('[data-f=notiz]').value.trim() || null,
+        };
+        const { data, error } = await sb.from('vorrat_chargen').update(row).eq('id', cid).select().single();
+        if (error) return fail(error);
+        const arr = vstate.chargen[it.id]; const i = arr.findIndex(x => x.id === cid); arr[i] = data;
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
+        toast('Charge gespeichert.'); renderChargen();
+      });
+      box.querySelectorAll('[data-del-c]').forEach(btn => btn.onclick = async () => {
+        if (!confirm('Diese Menge/MHD löschen?')) return;
+        const cid = Number(btn.closest('[data-cid]').dataset.cid);
+        const { error } = await sb.from('vorrat_chargen').delete().eq('id', cid); if (error) return fail(error);
+        vstate.chargen[it.id] = (vstate.chargen[it.id] || []).filter(x => x.id !== cid);
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single(); if (fresh) Object.assign(it, fresh);
+        renderChargen();
+      });
+    }
+    updSumLabel();
   }
   renderChargen();
-  const ac = document.getElementById('addCharge');
-  if (ac) ac.onclick = async () => {
-    const { data, error } = await sb.from('vorrat_chargen').insert({ vorrat_id: it.id, user_id: owner(), menge: 0, mhd: null, ort_id: it.ort_id }).select().single();
-    if (error) return fail(error); (vstate.chargen[it.id] ||= []).push(data); renderChargen();
+
+  document.getElementById('addCharge').onclick = async () => {
+    if (isNew) {
+      draftLots.push({ _k: draftKey++, menge: 1, mhd: '', ort_id: oSel.value ? Number(oSel.value) : null, notiz: '' });
+      renderChargen();
+      return;
+    }
+    const { data, error } = await sb.from('vorrat_chargen').insert({
+      vorrat_id: it.id, user_id: owner(), menge: 0, mhd: null,
+      ort_id: oSel.value ? Number(oSel.value) : it.ort_id || null,
+    }).select().single();
+    if (error) return fail(error);
+    (vstate.chargen[it.id] ||= []).push(data);
+    renderChargen();
   };
+
+  // Namens-Vorschläge (Pause / change)
+  const hintEl = document.getElementById('nameHint');
+  let hintTimer = null, lastSug = null;
+  function applySuggest(sug, { force = false } = {}) {
+    if (!sug) return;
+    const kat = document.getElementById('kat'), ein = document.getElementById('ein'), min = document.getElementById('min');
+    if (sug.kategorie && (!kat.value.trim() || force) && (!touched.kat || force)) { kat.value = sug.kategorie; touched.kat = false; }
+    if (sug.einheit && (!ein.value.trim() || force || (ein.value === 'Stück' && !touched.ein)) && (!touched.ein || force)) { ein.value = sug.einheit; touched.ein = false; }
+    if (sug.mindestbestand != null && !min.value.trim() && (!touched.min || force)) { min.value = decIn(sug.mindestbestand); }
+    if (sug.ort_id && !touched.ort && !oSel.value) { fillOrte(sug.ort_id); }
+    updSumLabel();
+  }
+  function showHint() {
+    const name = document.getElementById('name').value.trim();
+    const sug = productSuggest(name, it.id);
+    lastSug = sug;
+    if (!sug || (!sug.kategorie && !sug.einheit)) { hintEl.classList.add('hidden'); hintEl.innerHTML = ''; return; }
+    const parts = [];
+    if (sug.kategorie) parts.push(sug.kategorie);
+    if (sug.einheit) parts.push(sug.einheit);
+    if (sug.mindestbestand != null && !document.getElementById('min').value.trim()) parts.push('Min. ' + dec(sug.mindestbestand));
+    const src = sug.source === 'prev' ? `wie „${sug.label}“` : 'Vorschlag';
+    hintEl.classList.remove('hidden');
+    hintEl.innerHTML = `<span>${esc(src)}: <b>${esc(parts.join(' · '))}</b></span>
+      <button type="button" class="btn small secondary" id="applyHint">Übernehmen</button>`;
+    document.getElementById('applyHint').onclick = () => { applySuggest(sug, { force: true }); toast('Vorschlag übernommen'); showHint(); };
+    // Auto nur leere/unberührte Felder
+    applySuggest(sug, { force: false });
+  }
+  const nameEl = document.getElementById('name');
+  nameEl.addEventListener('input', () => { clearTimeout(hintTimer); hintTimer = setTimeout(showHint, 450); });
+  nameEl.addEventListener('change', showHint);
+  if (it.name) showHint();
+
   const del = document.getElementById('del');
   if (del) del.onclick = async () => {
     if (!confirm('Diesen Artikel löschen?')) return;
@@ -971,11 +1130,15 @@ function vForm(id) {
         barcode: document.getElementById('bc').value.trim() || null,
         notiz: document.getElementById('notiz').value.trim() || null,
       };
-      if (isNew) {
-        row.menge = Math.max(0, parseDec(document.getElementById('menge').value) ?? 0);
-        row.mhd = document.getElementById('mhd').value || null;
-      }
       if (!row.name) throw new Error('Bitte einen Namen eingeben.');
+      if (isNew) {
+        // Draft-Chargen einsammeln (DOM → draftLots bereits aktuell)
+        if (!draftLots.length) draftLots = [{ _k: 1, menge: 1, mhd: '', ort_id: row.ort_id, notiz: '' }];
+        const sum = draftLots.reduce((s, l) => s + Math.max(0, Number(l.menge) || 0), 0);
+        const withMhd = draftLots.filter(l => l.mhd).map(l => l.mhd).sort();
+        row.menge = sum;
+        row.mhd = withMhd[0] || null;
+      }
       const oldPath = it.bild_url;
       if (file) {
         toast('Foto wird hochgeladen …', 10000);
@@ -985,14 +1148,55 @@ function vForm(id) {
         if (up.error) throw up.error;
         row.bild_url = path;
       }
+      if (!isNew) {
+        // Offene Chargen-Eingaben mit Speichern mitschreiben
+        const cards = [...document.querySelectorAll('#chargenList [data-cid]')];
+        for (const card of cards) {
+          const cid = Number(card.dataset.cid);
+          const crow = {
+            menge: Math.max(0, parseDec(card.querySelector('[data-f=menge]').value) ?? 0),
+            mhd: card.querySelector('[data-f=mhd]').value || null,
+            ort_id: card.querySelector('[data-f=ort_id]').value ? Number(card.querySelector('[data-f=ort_id]').value) : null,
+            notiz: card.querySelector('[data-f=notiz]').value.trim() || null,
+          };
+          const ur = await sb.from('vorrat_chargen').update(crow).eq('id', cid).select().single();
+          if (ur.error) throw ur.error;
+          const arr = vstate.chargen[it.id] || [];
+          const ix = arr.findIndex(x => x.id === cid); if (ix >= 0) arr[ix] = ur.data;
+        }
+      }
       const r = isNew ? await sb.from('vorrat').insert({ ...row, user_id: owner() }).select().single() : await sb.from('vorrat').update(row).eq('id', it.id).select().single();
       if (r.error) throw r.error;
       if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
       await loadImageUrls([r.data]);
+      // nach Chargen-Sync frische Mengen holen
+      if (!isNew) {
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single();
+        if (fresh) Object.assign(r.data, fresh);
+      }
       vstate.items = (isNew ? [...vstate.items, r.data] : vstate.items.map(x => x.id === r.data.id ? r.data : x)).sort(vsort);
       if (isNew) {
-        const { data: ch } = await sb.from('vorrat_chargen').select('*').eq('vorrat_id', r.data.id);
-        if (ch) vstate.chargen[r.data.id] = ch;
+        // Auto-Trigger legt 1 Charge an → ersetzen durch alle Drafts
+        const { data: existing } = await sb.from('vorrat_chargen').select('id').eq('vorrat_id', r.data.id);
+        if (existing?.length) {
+          await sb.from('vorrat_chargen').delete().eq('vorrat_id', r.data.id);
+        }
+        const rows = draftLots.map(l => ({
+          vorrat_id: r.data.id,
+          user_id: owner(),
+          menge: Math.max(0, Number(l.menge) || 0),
+          mhd: l.mhd || null,
+          ort_id: l.ort_id || row.ort_id || null,
+          notiz: (l.notiz || '').trim() || null,
+        }));
+        const ins = await sb.from('vorrat_chargen').insert(rows).select();
+        if (ins.error) throw ins.error;
+        vstate.chargen[r.data.id] = ins.data || [];
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', r.data.id).single();
+        if (fresh) {
+          Object.assign(r.data, fresh);
+          vstate.items = vstate.items.map(x => x.id === fresh.id ? fresh : x);
+        }
       }
       toast('Gespeichert ✔');
       if (more) { const q = new URLSearchParams(); if (row.ort_id) q.set('ort', row.ort_id); if (row.kategorie) q.set('kat', row.kategorie); if (row.einheit) q.set('einheit', row.einheit); q.set('t', Date.now()); location.hash = '#v/artikel/neu?' + q; }

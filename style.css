@@ -133,3 +133,8 @@ table.mini th{background:#f5f5f5}
 .suggest input{min-width:0}
 .suggest select{width:auto;min-width:6.5rem;cursor:pointer;appearance:auto;-webkit-appearance:menulist}
 select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}
+
+.name-hint{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.4rem 0 .6rem;padding:.55rem .75rem;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;font-size:.92rem}
+.name-hint .btn{min-height:36px;padding:.35rem .7rem}
+.charge-card label{margin-top:.45rem}
+#chargenBox h2{font-size:1.15rem}
