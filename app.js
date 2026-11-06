@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-8';
+const ASSET_V = '20261106-9';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -204,7 +204,7 @@ async function checkAdmin() {
     else { const sh = shareOf(va.id); if (sh) viewAsShare(sh); }
   }
 }
-function resetView() { state.loaded = false; vstate.loaded = false; if (typeof lstate !== 'undefined') { lstate.loaded = false; lstate.kisten = []; lstate.sets = []; lstate.teile = []; } if (typeof cstate !== 'undefined') { cstate.loaded = false; cstate.bereiche = []; cstate.felder = []; cstate.orte = []; cstate.eintraege = []; } state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; vstate.chargen = {}; }
+function resetView() { state.loaded = false; vstate.loaded = false; if (typeof lstate !== 'undefined') { lstate.loaded = false; lstate.kisten = []; lstate.sets = []; lstate.teile = []; } if (typeof cstate !== 'undefined') { cstate.loaded = false; cstate.bereiche = []; cstate.felder = []; cstate.orte = []; cstate.eintraege = []; } state.kisten = []; state.sets = []; state.teile = []; vstate.items = []; vstate.orte = []; vstate.chargen = {}; vstate.lastEntnahme = {}; }
 // kind: 'admin' (Admin sieht fremde Daten) oder 'share' (mit mir geteilte Sammlung)
 function viewAs(id, email, kind = 'admin', recht = 'bearbeiten', bereich = 'beide') {
   if (id && id !== state.user.id) {
@@ -772,7 +772,7 @@ function viewPasswort() {
 // =====================================================================
 // ---------- Bereich: Vorratskammer ----------
 // =====================================================================
-const vstate = { loaded: false, orte: [], items: [], chargen: {}, filter: { q: '', kat: '', ort: '', nur: '' } };
+const vstate = { loaded: false, orte: [], items: [], chargen: {}, lastEntnahme: {}, filter: { q: '', kat: '', ort: '', nur: '' } };
 const KATEGORIEN = ['Konserven', 'Nudeln', 'Reis & Getreide', 'Getränke', 'Backen', 'Gewürze', 'Frühstück', 'Snacks', 'Tiefkühl', 'Gemüse', 'Obst', 'Milchprodukte', 'Fleisch & Wurst', 'Fisch', 'Brot & Backwaren', 'Süßigkeiten', 'Haushalt', 'Sonstiges'];
 const EINHEITEN = ['Stück', 'Packung', 'Dose', 'Glas', 'Flasche', 'kg', 'g', 'l', 'ml'];
 const PACK_UNITS = new Set(['packung', 'dose', 'glas', 'flasche']);
@@ -862,6 +862,13 @@ async function loadVorrat() {
   vstate.chargen = {};
   for (const ch of c.data) (vstate.chargen[ch.vorrat_id] ||= []).push(ch);
   for (const id of Object.keys(vstate.chargen)) vstate.chargen[id].sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')));
+  vstate.lastEntnahme = {};
+  try {
+    const { data: ents } = await sb.from('vorrat_entnahmen').select('vorrat_id, datum').eq('user_id', owner()).order('datum', { ascending: false }).limit(500);
+    for (const e of ents || []) {
+      if (vstate.lastEntnahme[e.vorrat_id] == null) vstate.lastEntnahme[e.vorrat_id] = e.datum;
+    }
+  } catch (e) { console.warn(e); }
   vstate.loaded = true;
   loadImageUrls(vstate.items).then(() => {
     const h = (location.hash || '').slice(1);
@@ -904,14 +911,40 @@ function vItem(it) {
       <div class="sub">${esc(it.kategorie || '')}${o ? ' · 📍 ' + esc(o.name) : ''}</div>
       <div>${mhdText(it)}${lotHint}${isLow(it) ? `<span class="badge red">unter Mindestbestand (${dec(it.mindestbestand)})</span>` : ''}</div>
       ${formatGebinde(it) ? `<div class="sub">${esc(formatGebinde(it))}</div>` : ''}
-      ${it.preis != null ? `<div class="sub price">${esc(priceLine(it.preis, it.menge))}</div>` : ''}</div></a>
+      ${it.preis != null ? `<div class="sub price">${esc(priceLine(it.preis, it.menge))}</div>` : ''}
+      ${vstate.lastEntnahme[it.id] ? `<div class="sub muted">Zuletzt abgezogen ${esc(new Date(vstate.lastEntnahme[it.id] + 'T00:00:00').toLocaleDateString('de-DE'))}</div>` : ''}</div></a>
     <div class="qty"><button type="button" data-d="-1" aria-label="weniger">−</button>
       <div class="n">${dec(it.menge)}<small>${esc(it.einheit || '')}</small></div>
       <button type="button" data-d="1" aria-label="mehr">+</button>
       <button type="button" class="offerbtn" data-offer title="Angebote">🛒</button></div></div>`;
 }
 
-// +1 / −1 direkt in der Liste – bei mehreren Chargen Charge wählen
+// +1 / Entnahme mit Menge+Datum
+function todayISO() {
+  const t = new Date();
+  return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+}
+function lotLabel(l, unit) {
+  const mhd = l.mhd ? 'MHD ' + new Date(l.mhd + 'T00:00:00').toLocaleDateString('de-DE') : 'ohne MHD';
+  return `${dec(l.menge)} ${unit || ''} · ${mhd}`.replace(/\s+/g, ' ').trim();
+}
+/** FIFO: ältestes MHD zuerst. Gibt { plan:[{lot,take}], left } zurück. */
+function planEntnahme(lots, amount) {
+  let left = Math.round(Number(amount) * 100) / 100;
+  const plan = [];
+  const sorted = [...lots].filter(l => Number(l.menge) > 0)
+    .sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')));
+  for (const l of sorted) {
+    if (left <= 0) break;
+    const have = Number(l.menge);
+    const take = Math.min(have, left);
+    if (take > 0) {
+      plan.push({ lot: l, take: Math.round(take * 100) / 100 });
+      left = Math.round((left - take) * 100) / 100;
+    }
+  }
+  return { plan, left };
+}
 async function pickCharge(it, delta) {
   const lots = [...(vstate.chargen[it.id] || [])];
   if (!lots.length) {
@@ -919,22 +952,117 @@ async function pickCharge(it, delta) {
     if (error) throw error; (vstate.chargen[it.id] ||= []).push(data); return data;
   }
   if (lots.length === 1) return lots[0];
-  // Dialog
   return new Promise(resolve => {
-    const sorted = delta < 0 ? lots.filter(l => l.menge > 0).sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999'))) : lots;
+    const sorted = lots.filter(l => delta < 0 ? l.menge > 0 : true);
     if (!sorted.length) return resolve(lots[0]);
     if (sorted.length === 1) return resolve(sorted[0]);
     const d = document.createElement('dialog');
     d.innerHTML = `<form><h2 style="margin-top:0">Welche Charge?</h2>
       <p class="muted">${delta < 0 ? 'Entnehmen aus:' : 'Hinzufügen zu:'}</p>
-      ${sorted.map(l => `<button type="button" class="btn block secondary" data-id="${l.id}" style="margin:.3rem 0;text-align:left">
-        ${dec(l.menge)} ${esc(it.einheit || '')}${l.mhd ? ' · MHD ' + new Date(l.mhd + 'T00:00:00').toLocaleDateString('de-DE') : ' · ohne MHD'}${l.notiz ? ' · ' + esc(l.notiz) : ''}
-      </button>`).join('')}
+      ${sorted.map(l => `<button type="button" class="btn block secondary" data-id="${l.id}" style="margin:.3rem 0;text-align:left">${esc(lotLabel(l, it.einheit))}${l.notiz ? ' · ' + esc(l.notiz) : ''}</button>`).join('')}
       <button type="button" class="btn secondary block" data-cancel style="margin-top:.6rem">Abbrechen</button></form>`;
     document.body.appendChild(d); d.showModal();
     d.querySelector('[data-cancel]').onclick = () => { d.close(); d.remove(); resolve(null); };
     d.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { const l = lots.find(x => x.id === Number(b.dataset.id)); d.close(); d.remove(); resolve(l); });
   });
+}
+async function askEntnahme(it) {
+  let lots = [...(vstate.chargen[it.id] || [])].filter(l => Number(l.menge) > 0);
+  const total = lots.reduce((s, l) => s + Number(l.menge), 0) || Number(it.menge) || 0;
+  if (!(total > 0)) { toast('Nichts mehr zum Abziehen.'); return null; }
+  const unit = it.einheit || '';
+  return new Promise(resolve => {
+    const d = document.createElement('dialog');
+    const lotSelect = lots.length > 1 ? `<label for="enLot">Aus Charge</label>
+      <select id="enLot">
+        <option value="fifo">Ältestes MHD zuerst</option>
+        ${[...lots].sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')))
+          .map(l => `<option value="${l.id}">${esc(lotLabel(l, unit))}</option>`).join('')}
+      </select>` : (lots.length === 1 ? `<p class="muted" style="font-size:.9rem">Charge: ${esc(lotLabel(lots[0], unit))}</p>` : '');
+    d.innerHTML = `<form id="enForm">
+      <h2 style="margin-top:0">Vom Vorrat abziehen</h2>
+      <p class="muted" style="margin-top:0">${esc(it.name)} · verfügbar ${dec(total)} ${esc(unit)}</p>
+      <label for="enMenge">Menge${unit ? ' (' + esc(unit) + ')' : ''}</label>
+      <input id="enMenge" inputmode="decimal" value="1" required autocomplete="off">
+      <label for="enDatum">Datum</label>
+      <input id="enDatum" type="date" value="${todayISO()}" required>
+      ${lotSelect}
+      <div class="row" style="margin-top:1rem;gap:.5rem">
+        <button type="button" class="btn secondary grow" data-cancel>Abbrechen</button>
+        <button type="submit" class="btn grow" style="background:#c62828">Abziehen</button>
+      </div>
+    </form>`;
+    document.body.appendChild(d); d.showModal();
+    const finish = v => { d.close(); d.remove(); resolve(v); };
+    d.querySelector('[data-cancel]').onclick = () => finish(null);
+    d.addEventListener('cancel', e => { e.preventDefault(); finish(null); });
+    d.querySelector('#enForm').onsubmit = e => {
+      e.preventDefault();
+      let menge;
+      try { menge = parseDec(document.getElementById('enMenge').value); } catch (err) { return toast(err.message); }
+      if (!(menge > 0)) return toast('Bitte eine Menge größer 0 eingeben.');
+      if (menge > total + 1e-9) return toast(`Nur ${dec(total)} ${unit} verfügbar.`);
+      const datum = document.getElementById('enDatum').value;
+      if (!datum) return toast('Bitte ein Datum wählen.');
+      const lotEl = document.getElementById('enLot');
+      const lotId = lotEl ? lotEl.value : (lots[0] ? String(lots[0].id) : 'fifo');
+      finish({ menge, datum, lotId });
+    };
+  });
+}
+async function applyEntnahme(it, spec) {
+  const menge = Math.round(Number(spec.menge) * 100) / 100;
+  const datum = spec.datum;
+  let lots = [...(vstate.chargen[it.id] || [])];
+  if (!lots.length) {
+    const { data, error } = await sb.from('vorrat_chargen').insert({
+      vorrat_id: it.id, user_id: owner(), menge: Math.max(0, Number(it.menge) || 0), mhd: it.mhd, ort_id: it.ort_id,
+    }).select().single();
+    if (error) throw error;
+    lots = [data];
+    vstate.chargen[it.id] = lots;
+  }
+  const available = lots.reduce((s, l) => s + Number(l.menge), 0);
+  if (menge > available + 1e-9) throw new Error(`Nur ${dec(available)} ${it.einheit || ''} verfügbar.`);
+
+  let plan;
+  if (spec.lotId && spec.lotId !== 'fifo') {
+    const lot = lots.find(x => String(x.id) === String(spec.lotId));
+    if (!lot) throw new Error('Charge nicht gefunden.');
+    if (Number(lot.menge) + 1e-9 < menge) throw new Error('In dieser Charge nicht genug.');
+    plan = [{ lot, take: menge }];
+  } else {
+    const r = planEntnahme(lots, menge);
+    if (r.left > 1e-9) throw new Error('Nicht genug Bestand.');
+    plan = r.plan;
+  }
+
+  const snapshots = plan.map(p => ({ id: p.lot.id, menge: Number(p.lot.menge) }));
+  try {
+    for (const p of plan) {
+      const neu = Math.max(0, Math.round((Number(p.lot.menge) - p.take) * 100) / 100);
+      const { data, error } = await sb.from('vorrat_chargen').update({ menge: neu }).eq('id', p.lot.id).select().single();
+      if (error) throw error;
+      Object.assign(p.lot, data);
+    }
+    const { error: e2 } = await sb.from('vorrat_entnahmen').insert({
+      user_id: owner(), vorrat_id: it.id, menge, datum,
+    });
+    if (e2) throw e2;
+  } catch (e) {
+    for (const s of snapshots) {
+      try {
+        const { data } = await sb.from('vorrat_chargen').update({ menge: s.menge }).eq('id', s.id).select().single();
+        const lot = lots.find(l => l.id === s.id);
+        if (data && lot) Object.assign(lot, data);
+      } catch (rb) { console.error(rb); }
+    }
+    throw e;
+  }
+  const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single();
+  if (fresh) Object.assign(it, fresh);
+  vstate.lastEntnahme[it.id] = datum;
+  toast(`Abgezogen: ${dec(menge)} ${it.einheit || ''}`.trim());
 }
 function bindQty(container, rerender) {
   container.onclick = async e => {
@@ -945,18 +1073,27 @@ function bindQty(container, rerender) {
     const it = vstate.items.find(x => x.id === id);
     const delta = Number(b.dataset.d);
     try {
+      if (delta < 0) {
+        const spec = await askEntnahme(it);
+        if (!spec) return;
+        await applyEntnahme(it, spec);
+        rerender();
+        return;
+      }
       const lot = await pickCharge(it, delta); if (!lot) return;
       const neu = Math.max(0, Number(lot.menge) + delta);
       const { data, error } = await sb.from('vorrat_chargen').update({ menge: neu }).eq('id', lot.id).select().single();
       if (error) throw error;
       Object.assign(lot, data);
-      // Parent-Menge/MHD per Trigger – neu laden für diesen Artikel
       const { data: fresh } = await sb.from('vorrat').select('*').eq('id', it.id).single();
       if (fresh) Object.assign(it, fresh);
       rerender();
     } catch (err) { fail(err); }
   };
 }
+window.planEntnahme = planEntnahme;
+window.askEntnahme = askEntnahme;
+window.applyEntnahme = applyEntnahme;
 
 function vListe() {
   const f = vstate.filter;
@@ -1047,6 +1184,7 @@ function vForm(id) {
   app.innerHTML = `
     <a class="back" href="#v/liste">‹ Zurück</a>
     <h1>${isNew ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
+    ${!isNew && vstate.lastEntnahme[it.id] ? `<p class="muted" style="margin-top:0">Zuletzt abgezogen am ${esc(new Date(vstate.lastEntnahme[it.id] + 'T00:00:00').toLocaleDateString('de-DE'))}</p>` : ''}
     <form id="f" class="card">
       <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt" autocomplete="off">
       <div id="nameHint" class="name-hint hidden">

@@ -2,11 +2,11 @@
 async function ensureXLSX() {
   if (window.XLSX) return;
   if (typeof loadScript === 'function') {
-    await loadScript('vendor/xlsx/xlsx.full.min.js?v=0.18.5');
+    await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
   } else {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'vendor/xlsx/xlsx.full.min.js?v=0.18.5';
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
       s.onload = resolve; s.onerror = () => reject(new Error('Tabellen-Datei konnte nicht geladen werden.'));
       document.head.appendChild(s);
     });

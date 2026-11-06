@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "checks": {
+    "fifoExact": true,
+    "fifoMulti": true,
+    "fifoShort": true,
+    "fracFifo": true,
+    "specificLot": true,
+    "tooMuch": true,
+    "dbFailRollback": true
+  }
+}
