@@ -24,15 +24,24 @@ const priceLine = (unit, qty) => {
 };
 const priceLineHtml = (unit, qty) => { const t = priceLine(unit, qty); return t ? `<div class="sub price">${esc(t)}</div>` : ''; };
 
-/** Eingabefeld + Auswahl-Select (statt datalist – auf Mobil zuverlässig). */
-function suggestField(id, value, suggestions, placeholder = '') {
+/** Textfeld volle Breite + darunter native Select (mobil-tauglich, kein enges 2-Spalten-Grid). */
+function suggestField(id, value, suggestions, placeholder = '', pickLabel = 'wählen') {
   const opts = [...new Set((suggestions || []).map(s => String(s).trim()).filter(Boolean))];
-  return `<div class="suggest">
-    <input id="${id}" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off">
-    <select id="${id}Pick" aria-label="Auswählen">
-      <option value="">▾ wählen</option>
-      ${opts.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+  const val = value == null ? '' : String(value);
+  return `<div class="suggest" data-suggest="${esc(id)}">
+    <input id="${id}" value="${esc(val)}" placeholder="${esc(placeholder)}" autocomplete="off">
+    <select id="${id}Pick" aria-label="${esc(pickLabel)}">
+      <option value="">${esc(pickLabel)}</option>
+      ${opts.map(x => `<option value="${esc(x)}"${x === val ? ' selected' : ''}>${esc(x)}</option>`).join('')}
     </select></div>`;
+}
+function syncSuggestPick(id, value) {
+  const sel = document.getElementById(id + 'Pick');
+  if (!sel) return;
+  const v = value == null ? '' : String(value);
+  const hit = [...sel.options].some(o => o.value === v);
+  if (hit) sel.value = v;
+  // Platzhalter behalten, Input-Wert nie löschen
 }
 function bindSuggest(id) {
   const inp = document.getElementById(id), sel = document.getElementById(id + 'Pick');
@@ -40,9 +49,8 @@ function bindSuggest(id) {
   sel.onchange = () => {
     if (!sel.value) return;
     inp.value = sel.value;
-    sel.selectedIndex = 0;
+    // Select auf gewähltem Wert belassen (kein Reset → sichtbarer Wert bleibt)
     inp.dispatchEvent(new Event('input', { bubbles: true }));
-    inp.focus();
   };
 }
 const num = n => (Number(n) || 0).toLocaleString('de-DE');
@@ -103,7 +111,7 @@ async function initAuth() {
     if (was !== !!state.user) { resetView(); state.isAdmin = false; setTimeout(async () => { await checkAdmin(); route(); }, 0); }
   });
 }
-document.getElementById('logoutBtn').onclick = async () => { sessionStorage.removeItem('viewAs'); await sb.auth.signOut(); };
+const _logoutBtn = document.getElementById('logoutBtn'); if (_logoutBtn) _logoutBtn.onclick = async () => { sessionStorage.removeItem('viewAs'); await sb.auth.signOut(); };
 async function checkAdmin() {
   state.isAdmin = false;
   if (!state.user) return;
@@ -373,7 +381,7 @@ function teilForm(t) {
       </div>
       <div class="grid2">
         <div><label for="nr">Teile-Nr.</label><input id="nr" value="${esc(t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340"></div>
-        <div><label for="farbe">Farbe</label>${suggestField('farbe', t.farbe, [...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'], 'z.B. rot')}</div>
+        <div><label for="farbe">Farbe</label>${suggestField('farbe', t.farbe, [...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'], 'z.B. rot', 'Farbe wählen')}</div>
       </div>
       <label for="beschr">Beschreibung</label><input id="beschr" value="${esc(t.beschreibung)}" placeholder="z.B. Ritterhelm mit Visier">
       <div class="grid2">
@@ -928,13 +936,16 @@ function vForm(id) {
     <h1>${isNew ? 'Neuer Artikel' : 'Artikel bearbeiten'}</h1>
     <form id="f" class="card">
       <label for="name">Name</label><input id="name" required value="${esc(it.name)}" placeholder="z.B. Tomaten gehackt" autocomplete="off">
-      <div id="nameHint" class="name-hint hidden"></div>
+      <div id="nameHint" class="name-hint hidden">
+        <span id="nameHintText"></span>
+        <button type="button" class="btn small" id="applyHint" style="background:#2e7d32">Alle Vorschläge übernehmen</button>
+      </div>
       <label for="angebotsname">Angebotsname <span class="muted">(für Prospekt-Suche, z.B. Milch)</span></label>
       <input id="angebotsname" value="${esc(it.angebotsname || '')}" placeholder="leer = aus Artikelname">
-      <div class="grid2">
-        <div><label for="kat">Kategorie</label>${suggestField('kat', it.kategorie, kats, 'z.B. Konserven')}</div>
-        <div><label for="ein">Einheit</label>${suggestField('ein', it.einheit, EINHEITEN, 'Stück')}</div>
-      </div>
+      <label for="kat">Kategorie</label>
+      ${suggestField('kat', it.kategorie, kats, 'z.B. Konserven', 'Gemüse, Konserven… wählen')}
+      <label for="ein">Einheit</label>
+      ${suggestField('ein', it.einheit, EINHEITEN, 'Stück', 'Einheit wählen')}
       <div class="grid2">
         <div><label for="min">Mindestbestand</label><input id="min" inputmode="decimal" value="${decIn(it.mindestbestand)}" placeholder="optional"></div>
         <div><label for="preis">Einzelpreis (€ pro Packung/Stück)</label><input id="preis" inputmode="decimal" value="${decIn(it.preis)}" placeholder="0,00"><div id="preisPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div>
@@ -1101,22 +1112,32 @@ function vForm(id) {
     renderChargen();
   };
 
-  // Namens-Vorschläge (Pause / change)
+  // Namens-Vorschläge (Pause / change) – Button einmal binden, Text aktualisieren
   const hintEl = document.getElementById('nameHint');
+  const hintText = document.getElementById('nameHintText');
+  const applyBtn = document.getElementById('applyHint');
   let hintTimer = null, lastSug = null;
   function applySuggest(sug, { force = false } = {}) {
-    if (!sug) return;
-    const kat = document.getElementById('kat'), ein = document.getElementById('ein'), min = document.getElementById('min');
-    if (sug.kategorie && (force || !kat.value.trim())) {
+    if (!sug) return false;
+    const kat = document.getElementById('kat');
+    const ein = document.getElementById('ein');
+    const min = document.getElementById('min');
+    if (!kat || !ein || !min) {
+      console.error('[vForm] applySuggest: Felder fehlen', { kat: !!kat, ein: !!ein, min: !!min });
+      return false;
+    }
+    if (sug.kategorie && (force || !String(kat.value || '').trim())) {
       kat.value = sug.kategorie;
+      syncSuggestPick('kat', sug.kategorie);
       if (force) touched.kat = true;
     }
-    if (sug.einheit && (force || !ein.value.trim() || (!touched.ein && ein.value === 'Stück'))) {
+    if (sug.einheit && (force || !String(ein.value || '').trim() || (!touched.ein && ein.value === 'Stück'))) {
       ein.value = sug.einheit;
+      syncSuggestPick('ein', sug.einheit);
       if (force) touched.ein = true;
       renderChargen();
     }
-    if (sug.mindestbestand != null && (force || !min.value.trim())) {
+    if (sug.mindestbestand != null && (force || !String(min.value || '').trim())) {
       min.value = decIn(sug.mindestbestand);
       if (force) touched.min = true;
     }
@@ -1125,33 +1146,42 @@ function vForm(id) {
       if (force) touched.ort = true;
       const det = document.getElementById('moreDetails'); if (det && force) det.open = true;
     }
+    // Sichtbarkeit erzwingen (manche Mobile-Browser zeichnen value sonst nicht neu)
+    kat.dispatchEvent(new Event('input', { bubbles: true }));
+    ein.dispatchEvent(new Event('input', { bubbles: true }));
+    min.dispatchEvent(new Event('input', { bubbles: true }));
     updSumLabel();
+    return true;
   }
   function showHint() {
     const name = document.getElementById('name').value.trim();
     const sug = productSuggest(name, it.id);
     lastSug = sug;
-    if (!sug || (!sug.kategorie && !sug.einheit && sug.mindestbestand == null)) { hintEl.classList.add('hidden'); hintEl.innerHTML = ''; return; }
+    if (!sug || (!sug.kategorie && !sug.einheit && sug.mindestbestand == null)) {
+      hintEl.classList.add('hidden');
+      if (hintText) hintText.textContent = '';
+      return;
+    }
     const parts = [];
     if (sug.kategorie) parts.push(sug.kategorie);
     if (sug.einheit) parts.push(sug.einheit);
     if (sug.mindestbestand != null) parts.push('Min. ' + dec(sug.mindestbestand));
     if (sug.ort_id) { const o = ortById(sug.ort_id); if (o) parts.push('Ort ' + o.name); }
     const src = sug.source === 'prev' ? `wie „${sug.label}“` : 'Vorschlag';
+    if (hintText) hintText.innerHTML = `${esc(src)}: <b>${esc(parts.join(' · '))}</b>`;
     hintEl.classList.remove('hidden');
-    hintEl.innerHTML = `<span>${esc(src)}: <b>${esc(parts.join(' · '))}</b></span>
-      <button type="button" class="btn small" id="applyHint" style="background:#2e7d32">Alle Vorschläge übernehmen</button>`;
-    const btn = document.getElementById('applyHint');
-    btn.onclick = e => {
-      e.preventDefault();
-      e.stopPropagation();
-      applySuggest(sug, { force: true });
-      toast('Alle Vorschläge übernommen ✔');
-      showHint();
-    };
-    // Auto nur leere Felder (ohne force)
+    // Auto nur leere Felder
     applySuggest(sug, { force: false });
   }
+  applyBtn.onclick = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sug = lastSug || productSuggest(document.getElementById('name').value.trim(), it.id);
+    if (!sug) return toast('Kein Vorschlag für diesen Namen.');
+    const ok = applySuggest(sug, { force: true });
+    if (ok) toast('Alle Vorschläge übernommen ✔');
+    else console.error('[vForm] applySuggest failed', sug);
+  };
   const nameEl = document.getElementById('name');
   nameEl.addEventListener('input', () => { clearTimeout(hintTimer); hintTimer = setTimeout(showHint, 450); });
   nameEl.addEventListener('change', showHint);
@@ -1640,4 +1670,4 @@ async function viewTeilen(section) {
 }
 
 // ---------- Start ----------
-(async () => { await initAuth(); route(); })();
+if (!window.__HARNESS) (async () => { await initAuth(); route(); })();

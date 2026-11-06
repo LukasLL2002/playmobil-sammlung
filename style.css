@@ -129,9 +129,9 @@ table.mini th{background:#f5f5f5}
 .right .price,.right .sub.price{text-align:right}
 .best-offer{background:#e8f5e9;border-left:4px solid #2e7d32;padding:.7rem;border-radius:10px;margin:.6rem 0}
 
-.suggest{display:grid;grid-template-columns:1fr minmax(6.5rem,auto);gap:.4rem;align-items:stretch}
-.suggest input{min-width:0}
-.suggest select{width:auto;min-width:6.5rem;cursor:pointer;appearance:auto;-webkit-appearance:menulist}
+.suggest{display:flex;flex-direction:column;gap:.35rem;width:100%}
+.suggest input,.suggest select{width:100%;max-width:100%;box-sizing:border-box;min-height:48px;font-size:.95rem}
+.suggest select{cursor:pointer;appearance:auto;-webkit-appearance:menulist}
 select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}
 
 .name-hint{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.4rem 0 .6rem;padding:.55rem .75rem;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;font-size:.92rem}
@@ -149,3 +149,8 @@ select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}
 .mhd-more{margin-top:.45rem}
 .mhd-more summary{cursor:pointer;font-size:.9rem}
 #chargenBox .charge-card{padding:.7rem .8rem}
+
+input,select,textarea{box-sizing:border-box;max-width:100%}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.name-hint{width:100%;box-sizing:border-box}

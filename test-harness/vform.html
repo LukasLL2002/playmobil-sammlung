@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>vForm harness</title>
+<link rel="stylesheet" href="../style.css?v=20261106-2">
+<style>
+#testbar{position:sticky;top:0;z-index:999;background:#111;color:#fff;padding:.55rem .7rem;font:12px/1.3 ui-monospace,monospace}
+#testbar.ok{background:#1b5e20}#testbar.fail{background:#b71c1c}
+#topbar .brand{pointer-events:none}
+#modebar,#tabbar{display:none!important}
+main{max-width:390px;margin:0 auto}
+</style>
+</head>
+<body>
+<div id="testbar">harness…</div>
+<header id="topbar">
+  <a href="#" class="brand">🥫 Vorratskammer</a>
+  <span class="who"><span id="who">test@example.com</span><button id="logoutBtn" class="btn-link" type="button">Abmelden</button></span>
+</header>
+<div id="modebar" class="hidden"></div>
+<div id="adminBanner" class="hidden"></div>
+<nav id="tabbar" class="hidden"></nav>
+<main id="app"><div class="center muted">Lädt …</div></main>
+<div id="toast" class="hidden"></div>
+<script>
+window.__errors = [];
+window.addEventListener('error', e => window.__errors.push(String(e.message||e.error||e)));
+window.addEventListener('unhandledrejection', e => window.__errors.push(String(e.reason)));
+window.__HARNESS = true;
+window.supabase = { createClient: () => ({
+  auth: {
+    getSession: async () => ({ data: { session: null }, error: null }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
+    signInWithPassword: async () => ({ data:{}, error:null }),
+    signUp: async () => ({ data:{}, error:null }),
+    signOut: async () => ({ error:null }),
+    resetPasswordForEmail: async () => ({ error:null }),
+    updateUser: async () => ({ data:{}, error:null }),
+  },
+  from() {
+    const api = {
+      select(){ return api; }, eq(){ return api; }, order(){ return api; },
+      insert(){ return api; }, update(){ return api; }, delete(){ return api; },
+      single: async () => ({ data: null, error: null }),
+      then(resolve){ return Promise.resolve({ data: [], error: null }).then(resolve); },
+    };
+    return api;
+  },
+  rpc: async () => ({ data: null, error: null }),
+  storage: { from(){ return { upload: async()=>({}), remove: async()=>({}), createSignedUrl: async()=>({data:{signedUrl:''}}) }; } },
+}) };
+</script>
+<script src="../app.js?v=20261106-2"></script>
+<script src="../offers.js?v=20261106-2"></script>
+<script>
+(async function () {
+  const bar = document.getElementById('testbar');
+  try {
+    // Stop auth boot from painting login over us (initAuth already started)
+    await new Promise(r => setTimeout(r, 50));
+    state.user = { id: 'test-user', email: 'test@example.com' };
+    state.isAdmin = false;
+    state.viewUid = 'test-user';
+    state.loaded = true;
+    vstate.loaded = true;
+    vstate.orte = [{ id: 1, name: 'Keller' }];
+    vstate.items = [];
+    vstate.chargen = {};
+    document.getElementById('topbar').classList.remove('hidden');
+    // Direct form render without router/login
+    vForm('neu');
+    const name = document.getElementById('name');
+    if (!name) throw new Error('name input missing after vForm');
+    name.value = 'tomate';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    name.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 750));
+    const hint = document.getElementById('nameHint');
+    if (!hint || hint.classList.contains('hidden')) throw new Error('hint hidden: ' + (document.getElementById('nameHintText')?.textContent||''));
+    // Reset fields to prove apply-all fills blanks
+    document.getElementById('kat').value = '';
+    document.getElementById('ein').value = 'Stück';
+    document.getElementById('min').value = '';
+    syncSuggestPick('kat', '');
+    syncSuggestPick('ein', 'Stück');
+    const btn = document.getElementById('applyHint');
+    if (!btn) throw new Error('applyHint missing');
+    btn.click();
+    await new Promise(r => setTimeout(r, 150));
+    const kat = document.getElementById('kat').value;
+    const ein = document.getElementById('ein').value;
+    const min = document.getElementById('min').value;
+    const kr = document.getElementById('kat').getBoundingClientRect();
+    const er = document.getElementById('ein').getBoundingClientRect();
+    const pr = document.getElementById('katPick').getBoundingClientRect();
+    const result = {
+      kat, ein, min,
+      katW: Math.round(kr.width), einW: Math.round(er.width), pickW: Math.round(pr.width),
+      clipped: kr.right > innerWidth - 4 || er.right > innerWidth - 4,
+      katPick: document.getElementById('katPick').value,
+      einPick: document.getElementById('einPick').value,
+      hint: document.getElementById('nameHintText')?.textContent,
+      errors: window.__errors.slice(),
+    };
+    window.__testResult = result;
+    const ok = kat === 'Gemüse' && ein === 'kg' && String(min) === '1'
+      && result.katW >= 280 && result.einW >= 280 && !result.clipped && result.errors.length === 0;
+    bar.className = ok ? 'ok' : 'fail';
+    bar.textContent = (ok ? 'PASS ' : 'FAIL ') + JSON.stringify(result);
+    console.log('TEST_RESULT', result);
+  } catch (e) {
+    bar.className = 'fail';
+    bar.textContent = 'FAIL ' + e;
+    window.__testResult = { error: String(e), errors: window.__errors.slice() };
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
