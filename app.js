@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-12';
+const ASSET_V = '20261106-13';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -390,6 +390,7 @@ function viewTeile() {
     <div class="row" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
       <a class="btn small secondary" href="#v/bon">📷 Kassenbon</a>
       <a class="btn small" href="#v/artikel/neu" style="background:#2e7d32">＋ Artikel</a>
+      <a class="btn small secondary" href="#v/uebersicht" title="Excel und Übersicht">⬇️ Excel</a>
     </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
@@ -1813,14 +1814,128 @@ function vStats() {
       : `<div class="card center muted">Keine Artikel mit MHD in den nächsten 14 Tagen oder abgelaufen.</div>`}
     <h2>Daten &amp; Angebote</h2>
     <div class="card">
+      <p class="muted" style="margin-top:0;font-size:.9rem">Deine Daten als Excel-Datei herunterladen. Fotos bleiben in der App.</p>
+      <button class="btn block" id="xlsx" style="background:#2e7d32">⬇️ Als Excel speichern</button>
+      <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#v/import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
-      <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button>
+      <button class="btn block secondary" id="csv">⬇️ Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#v/plz">📍 PLZ &amp; Märkte in der Nähe</a>
     </div>`;
   const l = document.getElementById('list'); if (l) bindQty(l, () => route());
   document.getElementById('csv').onclick = vExportCsv;
+  document.getElementById('xlsx').onclick = () => vExportXlsx().catch(fail);
+}
+
+function excelSafeText(v) {
+  if (v == null || v === '') return '';
+  const s = String(v);
+  // Formel-Einschleusung verhindern (=, +, -, @ am Anfang)
+  if (/^[=+\-@]/.test(s)) return "'" + s;
+  return s;
+}
+function localYmd(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function excelDateCell(iso) {
+  const s = parseMhdRaw(iso);
+  if (!s) return '';
+  const [y, m, d] = s.split('-').map(Number);
+  // SheetJS: Date-Objekt → echtes Excel-Datum
+  return new Date(y, m - 1, d);
+}
+async function vExportXlsx() {
+  const btn = document.getElementById('xlsx');
+  if (btn?.disabled) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Excel wird erstellt …'; }
+  try {
+    if (typeof ensureXLSX !== 'function') throw new Error('Excel-Hilfe fehlt. Bitte Seite neu laden.');
+    await ensureXLSX();
+    const wb = XLSX.utils.book_new();
+
+    // Blatt 1: Vorrat (ein Zeile pro Artikel)
+    const vHead = ['Name', 'Angebotsname', 'Kategorie', 'Einheit', 'Gesamtmenge', 'Mindestbestand', 'Einzelpreis', 'Inhalt je Packung', 'Inhaltseinheit', 'MHD (frühestes)', 'Ort', 'Barcode', 'Notiz'];
+    const vRows = vstate.items.map(it => {
+      const o = ortById(it.ort_id);
+      return [
+        excelSafeText(it.name),
+        excelSafeText(it.angebotsname),
+        excelSafeText(it.kategorie),
+        excelSafeText(it.einheit),
+        it.menge == null ? '' : Number(it.menge),
+        it.mindestbestand == null ? '' : Number(it.mindestbestand),
+        it.preis == null ? '' : Number(it.preis),
+        it.gebinde_inhalt == null ? '' : Number(it.gebinde_inhalt),
+        excelSafeText(it.basis_einheit),
+        excelDateCell(mhdDateOf(it) || it.mhd),
+        excelSafeText(o?.name),
+        excelSafeText(it.barcode),
+        excelSafeText(it.notiz),
+      ];
+    });
+    const wsV = XLSX.utils.aoa_to_sheet([vHead, ...vRows]);
+    // Datumsformat Spalte MHD (Index 9)
+    const rangeV = XLSX.utils.decode_range(wsV['!ref'] || 'A1');
+    for (let R = 1; R <= rangeV.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: 9 });
+      const cell = wsV[addr];
+      if (cell && cell.v instanceof Date) { cell.t = 'd'; cell.z = 'yyyy-mm-dd'; }
+    }
+    XLSX.utils.book_append_sheet(wb, wsV, 'Vorrat');
+
+    // Blatt 2: Mengen & MHD (eine Zeile pro Charge)
+    const cHead = ['Artikel', 'Menge', 'Einheit', 'MHD', 'Ort', 'Notiz'];
+    const cRows = [];
+    for (const it of vstate.items) {
+      const lots = vstate.chargen[it.id] || [];
+      const unit = it.einheit || '';
+      if (!lots.length) {
+        cRows.push([
+          excelSafeText(it.name),
+          it.menge == null ? '' : Number(it.menge),
+          excelSafeText(unit),
+          excelDateCell(it.mhd),
+          excelSafeText(ortById(it.ort_id)?.name),
+          excelSafeText(it.notiz),
+        ]);
+        continue;
+      }
+      for (const lot of lots) {
+        cRows.push([
+          excelSafeText(it.name),
+          lot.menge == null ? '' : Number(lot.menge),
+          excelSafeText(unit),
+          excelDateCell(lot.mhd),
+          excelSafeText(ortById(lot.ort_id || it.ort_id)?.name),
+          excelSafeText(lot.notiz),
+        ]);
+      }
+    }
+    const wsC = XLSX.utils.aoa_to_sheet([cHead, ...cRows]);
+    const rangeC = XLSX.utils.decode_range(wsC['!ref'] || 'A1');
+    for (let R = 1; R <= rangeC.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: 3 });
+      const cell = wsC[addr];
+      if (cell && cell.v instanceof Date) { cell.t = 'd'; cell.z = 'yyyy-mm-dd'; }
+    }
+    XLSX.utils.book_append_sheet(wb, wsC, 'Mengen & MHD');
+
+    // Blatt 3: Orte
+    const oHead = ['Name', 'Farbe', 'Notiz'];
+    const oRows = vstate.orte.map(o => [excelSafeText(o.name), excelSafeText(o.farbe), excelSafeText(o.notiz)]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([oHead, ...oRows]), 'Orte');
+
+    const fname = 'Sortiva-Vorrat-' + localYmd() + '.xlsx';
+    XLSX.writeFile(wb, fname, { compression: true });
+    toast('Excel gespeichert: ' + fname);
+  } catch (e) {
+    console.error(e);
+    toast('Excel-Datei konnte nicht erstellt werden. Prüfe die Verbindung und versuche es noch einmal.', 5000);
+    throw e;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇️ Als Excel speichern'; }
+  }
 }
 
 function vExportCsv() {
