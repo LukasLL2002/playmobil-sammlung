@@ -21,14 +21,19 @@ async function loadLego() {
   lstate.sets = s.data.sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
   lstate.teile = t.data;
   lstate.loaded = true;
-  await loadImageUrls(lstate.teile);
+  loadImageUrls(lstate.teile).then(() => {
+    const h = (location.hash || '').slice(1);
+    if (h === 'l/teile' || h === 'l/kisten' || h === 'l/sets' || h === 'l/uebersicht') {
+      try { route(); } catch { /* */ }
+    }
+  }).catch(e => console.warn(e));
 }
 
 async function routeLego(view, id) {
   const tab = { teil: 'l/teile', kiste: 'l/kisten', set: 'l/sets', import: 'l/uebersicht', rebrickable: 'l/sets' }[view] || 'l/' + view;
   setMode('lego', tab);
   if (!lstate.loaded) {
-    app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt LEGO …</div>';
+    app.innerHTML = '<div class="center muted" style="padding:3rem">LEGO-Sammlung wird geladen …</div>';
     try { await loadLego(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden.</div>'; return; }
   }
   const views = {

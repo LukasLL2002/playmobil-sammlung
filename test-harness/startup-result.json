@@ -1,0 +1,22 @@
+{
+  "ms": 3094,
+  "hasSB": true,
+  "hasReceipt": false,
+  "hasXLSX": false,
+  "hasQR": false,
+  "hasEnsure": true,
+  "bootText": "📦 Sortiva\n🧸\nSortiva\n\nDeine Sammlungen – bitte anmelden.\n\nE-Mail\nPasswort\nAnmelden\nNeues Konto erstellen\n\nPasswort vergessen?",
+  "errors": [],
+  "criticalBytes": 414802,
+  "files": [
+    "/index.html 1911",
+    "/style.css 13159",
+    "/lego.js 25222",
+    "/app.js 128454",
+    "/import.js 18398",
+    "/offers.js 18867",
+    "/custom.js 19161",
+    "/vendor/supabase/supabase.min.js 189630"
+  ],
+  "lazyNotLoaded": true
+}

@@ -1,3 +1,19 @@
+
+async function ensureXLSX() {
+  if (window.XLSX) return;
+  if (typeof loadScript === 'function') {
+    await loadScript('vendor/xlsx/xlsx.full.min.js?v=0.18.5');
+  } else {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/xlsx/xlsx.full.min.js?v=0.18.5';
+      s.onload = resolve; s.onerror = () => reject(new Error('Tabellen-Datei konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    });
+  }
+  if (!window.XLSX) throw new Error('Tabellen-Funktion ist gerade nicht verfügbar.');
+}
+
 // Excel/CSV-Import (SheetJS) – Playmobil, Vorrat, LEGO, Custom
 'use strict';
 
@@ -22,9 +38,9 @@ const IMPORT_TEMPLATES = {
   },
 };
 
-function downloadTemplate(kind) {
+async function downloadTemplate(kind) {
   const t = IMPORT_TEMPLATES[kind]; if (!t) return;
-  if (!window.XLSX) return toast('Datei-Lesen ist noch nicht bereit. Bitte Seite neu laden.');
+  await ensureXLSX();
   const ws = XLSX.utils.aoa_to_sheet([t.headers, ...t.sample]);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Vorlage');
   XLSX.writeFile(wb, `vorlage-${kind}.xlsx`);
@@ -42,6 +58,7 @@ function guessMap(headers, hints) {
 }
 
 async function parseImportFile(file) {
+  await ensureXLSX();
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -232,10 +249,11 @@ function viewImport(kind, customBereichId) {
       <label class="btn block" style="margin-top:.8rem">📁 Datei wählen<input id="file" type="file" accept=".xlsx,.xls,.csv,text/csv" hidden></label>
     </div>
     <div id="wiz"></div>`;
-  if (tpl) document.getElementById('tpl').onclick = () => downloadTemplate(kind);
+  if (tpl) document.getElementById('tpl').onclick = () => downloadTemplate(kind).catch(fail);
   document.getElementById('file').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
+      await ensureXLSX();
       parsed = await parseImportFile(f);
       map = kind === 'custom' ? null : guessMap(parsed.headers, tpl.mapHints);
       renderMap();

@@ -8,12 +8,12 @@
 <meta name="application-name" content="Sortiva">
 <title>Sortiva</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>">
-<link rel="stylesheet" href="style.css?v=20261106-7">
+<link rel="stylesheet" href="style.css?v=20261106-8">
 </head>
 <body>
-<header id="topbar" class="hidden">
+<header id="topbar">
   <a href="#" class="brand" id="brand">📦 Sortiva</a>
-  <span class="who"><span id="who"></span><button id="logoutBtn" class="btn-link">Abmelden</button></span>
+  <span class="who"><span id="who" class="muted">wird geöffnet …</span><button id="logoutBtn" class="btn-link hidden">Abmelden</button></span>
 </header>
 
 <div id="modebar" class="hidden">
@@ -26,19 +26,20 @@
 <div id="adminBanner" class="hidden"></div>
 <nav id="tabbar" class="hidden"></nav>
 <main id="app">
-  <div class="center muted" style="padding:3rem">Lädt …</div>
+  <div class="center" style="padding:3rem 1.2rem">
+    <p style="font-size:1.25rem;margin:0 0 .35rem"><b>Sortiva</b></p>
+    <p class="muted" style="margin:0" id="bootMsg">Deine Sammlungen werden geöffnet …</p>
+  </div>
 </main>
 
 <div id="toast" class="hidden"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=20261106-7"></script>
-<script src="import.js?v=20261106-7"></script>
-<script src="lego.js?v=20261106-7"></script>
-<script src="custom.js?v=20261106-7"></script>
-<script src="offers.js?v=20261106-7"></script>
-<script src="receipt.js?v=20261106-7"></script>
+<!-- Nur Kern-Libs beim Start (lokal). QR, Tabellen und Bon-Scanner nach Bedarf. -->
+<script src="vendor/supabase/supabase.min.js?v=2.86.0"></script>
+<script src="app.js?v=20261106-8"></script>
+<script src="import.js?v=20261106-8"></script>
+<script src="lego.js?v=20261106-8"></script>
+<script src="custom.js?v=20261106-8"></script>
+<script src="offers.js?v=20261106-8"></script>
 </body>
 </html>

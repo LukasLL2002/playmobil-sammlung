@@ -13,7 +13,10 @@ async function loadCustom() {
   for (const r of [b, f, o, e]) if (r.error) throw r.error;
   cstate.bereiche = b.data; cstate.felder = f.data; cstate.orte = o.data; cstate.eintraege = e.data;
   cstate.loaded = true;
-  await loadImageUrls(cstate.eintraege);
+  loadImageUrls(cstate.eintraege).then(() => {
+    const h = (location.hash || '').slice(1);
+    if (/^c\/[^/]+\/?$/.test(h) || /^c\/[^/]+\/(orte)?$/.test(h)) { try { route(); } catch {} }
+  }).catch(e => console.warn(e));
 }
 
 async function ensureCustom() {

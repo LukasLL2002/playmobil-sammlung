@@ -6,7 +6,42 @@ const SUPABASE_URL = 'https://nmuwmlmrmktjhquanejk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gLdgwbvvbcmTdgdfXI5c1A_7ZNlW1vt';
 const BUCKET = 'bilder';
 
+if (!window.supabase?.createClient) {
+  throw new Error('Verbindung konnte nicht vorbereitet werden. Bitte Seite neu laden.');
+}
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const ASSET_V = '20261106-8';
+const _scriptLoads = {};
+function loadScript(src) {
+  if (_scriptLoads[src]) return _scriptLoads[src];
+  _scriptLoads[src] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Datei konnte nicht geladen werden. Bitte Verbindung prüfen.'));
+    document.head.appendChild(s);
+  });
+  return _scriptLoads[src];
+}
+async function ensureQR() {
+  if (typeof qrcode === 'function') return;
+  await loadScript('vendor/qrcode/qrcode.min.js?v=1.4.4');
+  if (typeof qrcode !== 'function') throw new Error('QR-Codes sind gerade nicht verfügbar.');
+}
+async function ensureReceipt() {
+  if (typeof window.viewBon === 'function') return;
+  await loadScript('receipt.js?v=' + ASSET_V);
+  if (typeof window.viewBon !== 'function') throw new Error('Bon-Scanner ist gerade nicht verfügbar.');
+}
+async function openBonView() {
+  if (typeof window.viewBon !== 'function') {
+    app.innerHTML = '<div class="center muted" style="padding:3rem">Bon-Scanner wird geöffnet …</div>';
+    await ensureReceipt();
+  }
+  window.viewBon();
+}
 
 const state = { user: null, isAdmin: false, viewUid: null, viewEmail: null, viewKind: null, viewRecht: null, viewBereich: null, shares: [], merges: [], kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
   filter: { q: '', farbe: '', kiste: '', set: '' } };
@@ -108,7 +143,14 @@ async function loadAll() {
   state.sets = s.data.sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
   state.teile = t.data;
   state.loaded = true;
-  await loadImageUrls(state.teile);
+  // Bilder nachziehen – Liste kann schon erscheinen
+  loadImageUrls(state.teile).then(() => {
+    const h = (location.hash || '').slice(1);
+    // Nur Listen neu zeichnen – offene Formulare nicht verwerfen
+    if (h === 'teile' || h === 'kisten' || h === 'sets' || h === 'uebersicht') {
+      try { route(); } catch { /* */ }
+    }
+  }).catch(e => console.warn(e));
 }
 
 async function loadImageUrls(teile) {
@@ -122,8 +164,19 @@ const imgUrl = t => t.bild_url ? state.imgCache[t.bild_url] : null;
 const thumb = t => { const u = imgUrl(t); return u ? `<img class="thumb" src="${esc(u)}" alt="" loading="lazy">` : `<div class="thumb">🧩</div>`; };
 
 // ---------- Auth ----------
+function withTimeout(promise, ms, msg) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(msg)), ms); }),
+  ]);
+}
 async function initAuth() {
-  const { data } = await sb.auth.getSession();
+  const { data } = await withTimeout(
+    sb.auth.getSession(),
+    12000,
+    'Anmelden kann ohne Internet nicht klappen. Bitte Verbindung prüfen und erneut versuchen.'
+  );
   state.user = data.session?.user || null;
   await checkAdmin();
   sb.auth.onAuthStateChange((_e, session) => {
@@ -132,6 +185,12 @@ async function initAuth() {
   });
 }
 const _logoutBtn = document.getElementById('logoutBtn'); if (_logoutBtn) _logoutBtn.onclick = async () => { sessionStorage.removeItem('viewAs'); await sb.auth.signOut(); };
+function setLoggedInChrome(on) {
+  const who = document.getElementById('who');
+  const lo = document.getElementById('logoutBtn');
+  if (lo) lo.classList.toggle('hidden', !on);
+  if (who && !on) { who.textContent = ''; who.classList.add('muted'); }
+}
 async function checkAdmin() {
   state.isAdmin = false;
   if (!state.user) return;
@@ -201,15 +260,17 @@ function renderChrome(mode) {
 }
 
 function renderLogin() {
-  document.getElementById('topbar').classList.add('hidden');
+  document.getElementById('topbar').classList.remove('hidden');
   document.getElementById('tabbar').classList.add('hidden');
   document.getElementById('modebar').classList.add('hidden');
   document.getElementById('adminBanner').classList.add('hidden');
+  setLoggedInChrome(false);
+  document.getElementById('brand').textContent = '📦 Sortiva';
   app.innerHTML = `
   <div class="login card">
     <div class="logo">🧸</div>
     <h1 class="center">Sortiva</h1>
-    <p class="center muted">Bitte melde dich an, um die Familien-Sammlung zu sehen.</p>
+    <p class="center muted">Deine Sammlungen – bitte anmelden.</p>
     <form id="loginForm">
       <label for="em">E-Mail</label>
       <input id="em" type="email" autocomplete="email" required>
@@ -265,6 +326,7 @@ function setMode(mode, tab) {
 }
 async function route() {
   if (!state.user) return renderLogin();
+  setLoggedInChrome(true);
   ['topbar', 'tabbar', 'modebar'].forEach(id => document.getElementById(id).classList.remove('hidden'));
   if (!location.hash || location.hash === '#') { location.replace('#' + (localStorage.getItem('modus') === 'v' ? 'v/liste' : 'teile')); return; }
   const parts = location.hash.slice(1).split('/');
@@ -283,7 +345,7 @@ async function route() {
   if (parts[0] === 'import' && parts[1] === 'playmobil') return viewImport('playmobil');
   if (!state.loaded) {
     setMode('pm', '');
-    app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Sammlung …</div>';
+    app.innerHTML = '<div class="center muted" style="padding:3rem">Sammlung wird geladen …</div>';
     try { await loadAll(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
   const [view, id] = parts;
@@ -610,7 +672,9 @@ async function writeNfc(url, what) {
   } catch (e) { fail(e); }
 }
 function qrSvg(text) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
-function viewLabels(id) {
+async function viewLabels(id) {
+  app.innerHTML = '<div class="center muted" style="padding:2rem">Etiketten werden vorbereitet …</div>';
+  try { await ensureQR(); } catch (e) { return fail(e); }
   const list = id ? state.kisten.filter(k => k.id === Number(id)) : state.kisten;
   app.innerHTML = `
     <div class="noprint">
@@ -799,17 +863,22 @@ async function loadVorrat() {
   for (const ch of c.data) (vstate.chargen[ch.vorrat_id] ||= []).push(ch);
   for (const id of Object.keys(vstate.chargen)) vstate.chargen[id].sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')));
   vstate.loaded = true;
-  await loadImageUrls(vstate.items);
+  loadImageUrls(vstate.items).then(() => {
+    const h = (location.hash || '').slice(1);
+    if (h === 'v/liste' || h === 'v/orte' || h === 'v/einkauf' || h === 'v/uebersicht') {
+      try { route(); } catch { /* */ }
+    }
+  }).catch(e => console.warn(e));
 }
 
 async function routeVorrat(view, id) {
   const tab = { artikel: 'v/liste', ort: 'v/orte', etiketten: 'v/orte', bon: 'v/liste' }[view] || 'v/' + view;
   setMode('v', tab);
   if (!vstate.loaded) {
-    app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Vorrat …</div>';
+    app.innerHTML = '<div class="center muted" style="padding:3rem">Vorrat wird geladen …</div>';
     try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
-  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings, bon: viewBon };
+  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings, bon: () => { openBonView().catch(fail); } };
   (views[view] || vListe)(id);
 }
 
@@ -1480,7 +1549,9 @@ function vOrt(id) {
   if (nfc) document.getElementById('nfc').onclick = () => writeNfc(ortUrl(o.id), 'diesen Ort');
 }
 
-function vLabels(id) {
+async function vLabels(id) {
+  app.innerHTML = '<div class="center muted" style="padding:2rem">Etiketten werden vorbereitet …</div>';
+  try { await ensureQR(); } catch (e) { return fail(e); }
   const list = id ? vstate.orte.filter(o => o.id === Number(id)) : vstate.orte;
   app.innerHTML = `
     <div class="noprint"><a class="back" href="${id ? '#v/ort/' + id : '#v/orte'}">‹ Zurück</a><h1>🏷️ QR-Etiketten (Vorrat)</h1>
@@ -1585,7 +1656,7 @@ async function resetUser(u) {
 async function viewAdmin() {
   setMode('admin', '');
   if (!state.isAdmin) { app.innerHTML = '<div class="card">Kein Zugriff – nur für Admins.</div>'; return; }
-  app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Benutzer …</div>';
+  app.innerHTML = '<div class="center muted" style="padding:3rem">Benutzer werden geladen …</div>';
   const { data: users, error } = await sb.rpc('admin_list_users');
   if (error) { fail(error); app.innerHTML = '<div class="card">Benutzerliste konnte nicht geladen werden.</div>'; return; }
   app.innerHTML = `
@@ -1809,4 +1880,20 @@ async function viewTeilen(section) {
 }
 
 // ---------- Start ----------
-if (!window.__HARNESS) (async () => { await initAuth(); route(); })();
+if (!window.__HARNESS) (async () => {
+  const boot = document.getElementById('bootMsg');
+  try {
+    await initAuth();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('topbar')?.classList.remove('hidden');
+    app.innerHTML = `<div class="card center" style="margin:1.5rem auto;max-width:28rem">
+      <p style="margin-top:0">${esc(friendlyError(e))}</p>
+      <button class="btn block" type="button" id="bootRetry">Erneut versuchen</button>
+    </div>`;
+    document.getElementById('bootRetry').onclick = () => location.reload();
+    return;
+  }
+  if (boot) boot.textContent = '';
+  route();
+})();
