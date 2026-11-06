@@ -174,17 +174,15 @@ function offerSearchTerm(it) {
   return (words.slice(0, 2).join(' ') || raw).slice(0, 40);
 }
 
-function offerLinks(it, cityInfo) {
+function offerLinks(it, _cityInfo) {
   const term = offerSearchTerm(it);
   const pslug = productSlug(term);
   const q = encodeURIComponent(term);
-  const city = cityInfo.slug;
-  const cityTc = cityInfo.title || cityTitle(cityInfo.city);
-  // Nur bekannte öffentliche Listen-/Such-URLs – keine erfundenen Angebots-IDs
-  // Produktlisten: national /angebote/{slug} (Stadt-Produkt-Pfade wie /northeim/angebote/milch → 404)
+  // Nationale Produktlisten (Stadt+Produkt oft 404, z.B. /northeim/angebote/milch). Alternativen ohne regionalen Claim.
+  const kaufSlug = encodeURIComponent(String(term).replace(/\s+/g, '-'));
   const all = {
     meinprospekt: { id: 'meinprospekt', name: 'MeinProspekt', url: `https://www.meinprospekt.de/angebote/${pslug}` },
-    kaufda: { id: 'kaufda', name: 'kaufDA', url: `https://www.kaufda.de/${encodeURIComponent(cityTc)}/Angebote/${encodeURIComponent(String(term).replace(/\s+/g, '-'))}` },
+    kaufda: { id: 'kaufda', name: 'kaufDA', url: `https://www.kaufda.de/Angebote/${kaufSlug}` },
     marktguru: { id: 'marktguru', name: 'Marktguru', url: `https://www.marktguru.de/search/${q}` },
   };
   const pref = getOfferSource();
