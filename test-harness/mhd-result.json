@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "checks": {
+    "lotOnlyDate": true,
+    "lotOnlyDays": true,
+    "lotOnlyWarn": true,
+    "parentOnly": true,
+    "mixedEarliest": true,
+    "mixedDays": true,
+    "pastBad": true,
+    "day15": true,
+    "zeroLotIgnored": true,
+    "nullAll": true,
+    "sliceRaw": true
+  }
+}

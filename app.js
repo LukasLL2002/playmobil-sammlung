@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-9';
+const ASSET_V = '20261106-10';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -843,11 +843,52 @@ const ortById = id => vstate.orte.find(o => o.id === Number(id));
 const ortUrl = id => baseUrl() + '#v/ort/' + id;
 const dec = n => (Number(n) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
 const parseDec = v => { v = String(v ?? '').trim().replace(/\s|€/g, '').replace(',', '.'); if (v === '') return null; const n = Number(v); if (isNaN(n)) throw new Error('„' + v + '“ ist keine gültige Zahl. Bitte z.B. 1,5 eingeben.'); return n; };
-function mhdDays(it) { if (!it.mhd) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(it.mhd + 'T00:00:00') - t) / 864e5); }
-const mhdState = it => { const d = mhdDays(it); return d == null ? '' : d < 0 ? 'bad' : d <= 14 ? 'warn' : ''; };
+/** MHD-Datum als YYYY-MM-DD (Chargen oder Parent). */
+function parseMhdRaw(raw) {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
+}
+function localDay(y, m, d) { return new Date(y, m - 1, d); }
+function dayFromISO(iso) {
+  const s = parseMhdRaw(iso); if (!s) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  return localDay(y, m, d);
+}
+/** Frühestes MHD: Chargen mit Menge > 0, sonst Parent-Feld. */
+function mhdDateOf(it) {
+  if (!it) return null;
+  const lots = (vstate.chargen && vstate.chargen[it.id]) || [];
+  let best = null;
+  for (const l of lots) {
+    if (!(Number(l.menge) > 0)) continue;
+    const s = parseMhdRaw(l.mhd);
+    if (s && (!best || s < best)) best = s;
+  }
+  if (best) return best;
+  return parseMhdRaw(it.mhd);
+}
+/** Tage bis MHD (negativ = abgelaufen). Optional now für Tests. */
+function mhdDays(it, now) {
+  const iso = mhdDateOf(it);
+  if (!iso) return null;
+  const target = dayFromISO(iso); if (!target) return null;
+  const t = now ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : new Date();
+  t.setHours(0, 0, 0, 0);
+  return Math.round((target - t) / 864e5);
+}
+const mhdState = (it, now) => { const d = mhdDays(it, now); return d == null ? '' : d < 0 ? 'bad' : d <= 14 ? 'warn' : ''; };
 const isLow = it => it.mindestbestand != null && Number(it.menge) < Number(it.mindestbestand);
-const mhdText = it => { const d = mhdDays(it); if (d == null) return ''; const ds = new Date(it.mhd + 'T00:00:00').toLocaleDateString('de-DE');
-  return d < 0 ? `<span class="badge red">abgelaufen ${ds}</span>` : d <= 14 ? `<span class="badge orange">MHD ${ds} (${d === 0 ? 'heute' : 'in ' + d + ' T.'})</span>` : `<span class="badge">MHD ${ds}</span>`; };
+const mhdText = it => {
+  const iso = mhdDateOf(it); const d = mhdDays(it);
+  if (d == null || !iso) return '';
+  const ds = dayFromISO(iso).toLocaleDateString('de-DE');
+  return d < 0 ? `<span class="badge red">abgelaufen ${ds}</span>` : d <= 14 ? `<span class="badge orange">MHD ${ds} (${d === 0 ? 'heute' : 'in ' + d + ' T.'})</span>` : `<span class="badge">MHD ${ds}</span>`;
+};
+window.mhdDateOf = mhdDateOf;
+window.mhdDays = mhdDays;
+window.mhdState = mhdState;
 const vsort = (a, b) => a.name.localeCompare(b.name, 'de');
 
 async function loadVorrat() {
@@ -862,6 +903,11 @@ async function loadVorrat() {
   vstate.chargen = {};
   for (const ch of c.data) (vstate.chargen[ch.vorrat_id] ||= []).push(ch);
   for (const id of Object.keys(vstate.chargen)) vstate.chargen[id].sort((a, b) => String(a.mhd || '9999').localeCompare(String(b.mhd || '9999')));
+  // Frühestes Chargen-MHD auf Artikel spiegeln (Anzeige/Filter, ohne DB-Schreiben)
+  for (const it of vstate.items) {
+    const earliest = mhdDateOf(it);
+    if (earliest) it.mhd = earliest;
+  }
   vstate.lastEntnahme = {};
   try {
     const { data: ents } = await sb.from('vorrat_entnahmen').select('vorrat_id, datum').eq('user_id', owner()).order('datum', { ascending: false }).limit(500);
@@ -879,12 +925,18 @@ async function loadVorrat() {
 }
 
 async function routeVorrat(view, id) {
+  const hashQ = new URLSearchParams((location.hash.split('?')[1] || ''));
+  view = String(view || 'liste').split('?')[0];
+  if (id) id = String(id).split('?')[0];
   const tab = { artikel: 'v/liste', ort: 'v/orte', etiketten: 'v/orte', bon: 'v/liste' }[view] || 'v/' + view;
   setMode('v', tab);
   if (!vstate.loaded) {
     app.innerHTML = '<div class="center muted" style="padding:3rem">Vorrat wird geladen …</div>';
     try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
+  if (hashQ.has('nur')) vstate.filter.nur = hashQ.get('nur') || '';
+  if (hashQ.has('kat')) vstate.filter.kat = hashQ.get('kat') || '';
+  if (hashQ.has('ort')) vstate.filter.ort = hashQ.get('ort') || '';
   const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings, bon: () => { openBonView().catch(fail); } };
   (views[view] || vListe)(id);
 }
@@ -892,7 +944,10 @@ async function routeVorrat(view, id) {
 function vMatches(it, f) {
   if (f.kat && it.kategorie !== f.kat) return false;
   if (f.ort && String(it.ort_id) !== f.ort && !(f.ort === 'none' && !it.ort_id)) return false;
-  if (f.nur === 'mhd' && !mhdState(it)) return false;
+  if (f.nur === 'mhd') {
+    if (!(Number(it.menge) > 0)) return false;
+    if (!mhdState(it)) return false;
+  }
   if (f.nur === 'low' && !isLow(it)) return false;
   if (!f.q) return true;
   const o = ortById(it.ort_id);
@@ -1722,21 +1777,26 @@ function vEinkauf() {
 
 // ---------- Übersicht & CSV ----------
 function vStats() {
-  const it = vstate.items;
-  const bald = it.filter(i => mhdState(i) === 'warn'), weg = it.filter(i => mhdState(i) === 'bad');
-  const wert = it.reduce((s, i) => s + (Number(i.preis) || 0) * (Number(i.menge) || 0), 0);
-  const soon = it.filter(i => mhdState(i)).sort((a, b) => mhdDays(a) - mhdDays(b));
+  const it = vstate.items.filter(i => Number(i.menge) > 0);
+  const bald = it.filter(i => mhdState(i) === 'warn');
+  const weg = it.filter(i => mhdState(i) === 'bad');
+  const wert = vstate.items.reduce((s, i) => s + (Number(i.preis) || 0) * (Number(i.menge) || 0), 0);
+  const soon = it.filter(i => mhdState(i)).sort((a, b) => (mhdDays(a) ?? 9999) - (mhdDays(b) ?? 9999));
+  const low = vstate.items.filter(isLow);
   app.innerHTML = `
     <h1>📊 Übersicht Vorrat</h1>
     <div class="stats">
-      <div class="stat"><b>${num(it.length)}</b>Artikel</div>
-      <div class="stat"><b style="color:#e65100">${num(bald.length)}</b>MHD in ≤ 14 Tagen</div>
-      <div class="stat"><b style="color:var(--red)">${num(weg.length)}</b>abgelaufen</div>
-      <div class="stat"><b>${num(it.filter(isLow).length)}</b>unter Mindestbestand</div>
+      <div class="stat"><b>${num(vstate.items.length)}</b>Artikel</div>
+      <a class="stat" href="#v/liste?nur=mhd" style="text-decoration:none;color:inherit"><b style="color:#e65100">${num(bald.length)}</b>MHD in ≤ 14 Tagen</a>
+      <a class="stat" href="#v/liste?nur=mhd" style="text-decoration:none;color:inherit"><b style="color:var(--red)">${num(weg.length)}</b>abgelaufen</a>
+      <a class="stat" href="#v/liste?nur=low" style="text-decoration:none;color:inherit"><b>${num(low.length)}</b>unter Mindestbestand</a>
       <div class="stat"><b>${euro(wert)}</b>Gesamtwert</div>
       <div class="stat"><b>${num(vstate.orte.length)}</b>Orte</div>
     </div>
-    ${soon.length ? `<h2>Bald verbrauchen</h2><div id="list" class="list">${soon.map(vItem).join('')}</div>` : ''}
+    <h2>Bald verbrauchen</h2>
+    ${soon.length
+      ? `<div id="list" class="list">${soon.map(vItem).join('')}</div>`
+      : `<div class="card center muted">Keine Artikel mit MHD in den nächsten 14 Tagen oder abgelaufen.</div>`}
     <h2>Daten &amp; Angebote</h2>
     <div class="card">
       <a class="btn block secondary" href="#v/import">📥 Aus Excel oder Tabelle übernehmen</a>
