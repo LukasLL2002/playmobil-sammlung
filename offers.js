@@ -83,6 +83,43 @@ function viewPlzSettings() {
   document.getElementById('maerkte').onclick = () => loadMaerkte(document.getElementById('ml'));
 }
 
+/** Bekannte Händler-Slugs auf MeinProspekt (curl-verifiziert, Stand 2026-11). */
+const MP_RETAILERS = [
+  { keys: ['rewe'], slug: 'rewe-de' },
+  { keys: ['lidl'], slug: 'lidl' },
+  { keys: ['edeka', 'edeka center', 'edeka markt'], slug: 'edeka' },
+  { keys: ['penny'], slug: 'penny' },
+  { keys: ['kaufland'], slug: 'kaufland' },
+  { keys: ['netto marken', 'netto city', 'netto'], slug: 'netto-de' },
+  { keys: ['dm-drogerie', 'dm drogerie', ' dm '], slug: 'dm-de', exact: ['dm'] },
+  { keys: ['rossmann'], slug: 'rossmann-de' },
+  { keys: ['tegut'], slug: 'tegut-de' },
+  { keys: ['norma'], slug: 'norma-de' },
+  { keys: ['hit '], slug: 'hit-de', exact: ['hit'] },
+  { keys: ['budni'], slug: 'budni-de' },
+  { keys: ['action'], slug: 'action' },
+  // Aldi: kein stabiler Städte-Händler-Slug gefunden → Stadtseite + Marktguru-Fallback unten
+];
+
+function matchRetailer(m) {
+  const hay = norm([m.operator, m.name, m.title, m.store, m.trade_label, m.brand, m.osm_brand].filter(Boolean).join(' | '));
+  for (const r of MP_RETAILERS) {
+    if (r.exact && r.exact.some(e => hay.split(/[^a-z0-9äöüß]+/).includes(e))) return r;
+    if (r.keys.some(k => hay.includes(norm(k)))) return r;
+  }
+  if (/\baldi\b/.test(hay)) return { keys: ['aldi'], slug: null, label: 'Aldi' };
+  return null;
+}
+
+function prospektUrl(m, cityInfo) {
+  const city = cityInfo?.slug;
+  if (!city) return null;
+  const hit = matchRetailer(m);
+  if (hit?.slug) return { url: `https://www.meinprospekt.de/${city}/${hit.slug}`, label: 'Prospekte öffnen' };
+  // Unbekannter / Aldi: Stadt-Übersicht (verifiziert) – keine Website des Händlers
+  return { url: `https://www.meinprospekt.de/${city}`, label: 'Prospekte in ' + (cityInfo.city || city) };
+}
+
 async function loadMaerkte(el) {
   const plz = getPlz();
   if (plz.length !== 5) { toast('Bitte zuerst eine PLZ speichern.'); return viewPlzSettings(); }
@@ -97,16 +134,19 @@ async function loadMaerkte(el) {
     const data = await r.json();
     const list = Array.isArray(data) ? data : (data.records || data.results || data.stores || data.data || []);
     if (!list.length) { el.innerHTML = '<p class="muted">Keine Märkte gefunden.</p>'; return; }
-    el.innerHTML = `<div class="list">${list.slice(0, 20).map(m => {
+    const cityLabel = info?.city || plz;
+    el.innerHTML = `<p><span class="badge green">Prospekte in ${esc(cityLabel)}</span></p>
+      <div class="list">${list.slice(0, 20).map(m => {
       const name = m.name || m.title || m.store || m.trade_label || 'Markt';
       const street = [m.street || m.adresse || m.address, m.housenumber || m.house_number || m.hausnummer].filter(Boolean).join(' ');
       const addr = [street, m.postcode || m.plz || m.zip, m.city || m.ort].filter(Boolean).join(', ');
       const hours = m.opening_hours || m.oeffnungszeiten || m.hours || '';
-      const link = m.website || m.url || m.link || m.flyer_url || '';
+      const prosp = prospektUrl(m, info);
+      // Keine Händler-Website – nur MeinProspekt-Prospekte
       return `<div class="card" style="margin:0"><b>${esc(name)}</b>
         ${addr ? `<div class="sub muted">${esc(addr)}</div>` : ''}
         ${hours ? `<div class="sub muted">🕒 ${esc(typeof hours === 'string' ? hours : JSON.stringify(hours))}</div>` : ''}
-        ${link ? `<a class="btn small secondary" href="${esc(link)}" target="_blank" rel="noopener">Zur Seite</a>` : ''}
+        ${prosp ? `<a class="btn small" style="background:#2e7d32;margin-top:.4rem" href="${esc(prosp.url)}" target="_blank" rel="noopener">${esc(prosp.label)} ↗</a>` : '<span class="muted">PLZ/Ort fehlt für Prospekt-Link</span>'}
       </div>`;
     }).join('')}</div>`;
   } catch (e) {
