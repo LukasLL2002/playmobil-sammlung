@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-10';
+const ASSET_V = '20261106-11';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -910,9 +910,13 @@ async function loadVorrat() {
   }
   vstate.lastEntnahme = {};
   try {
-    const { data: ents } = await sb.from('vorrat_entnahmen').select('vorrat_id, datum').eq('user_id', owner()).order('datum', { ascending: false }).limit(500);
-    for (const e of ents || []) {
-      if (vstate.lastEntnahme[e.vorrat_id] == null) vstate.lastEntnahme[e.vorrat_id] = e.datum;
+    const er = await sb.from('vorrat_entnahmen').select('vorrat_id, datum').eq('user_id', owner()).order('datum', { ascending: false }).limit(500);
+    if (!er.error) {
+      for (const e of er.data || []) {
+        if (vstate.lastEntnahme[e.vorrat_id] == null) vstate.lastEntnahme[e.vorrat_id] = e.datum;
+      }
+    } else {
+      console.warn('Entnahmen nicht geladen', er.error);
     }
   } catch (e) { console.warn(e); }
   vstate.loaded = true;
@@ -932,13 +936,23 @@ async function routeVorrat(view, id) {
   setMode('v', tab);
   if (!vstate.loaded) {
     app.innerHTML = '<div class="center muted" style="padding:3rem">Vorrat wird geladen …</div>';
-    try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
+    try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Vorrat konnte nicht geladen werden. <button class="btn small" type="button" onclick="location.reload()">Erneut versuchen</button></div>'; return; }
   }
   if (hashQ.has('nur')) vstate.filter.nur = hashQ.get('nur') || '';
   if (hashQ.has('kat')) vstate.filter.kat = hashQ.get('kat') || '';
   if (hashQ.has('ort')) vstate.filter.ort = hashQ.get('ort') || '';
-  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings, bon: () => { openBonView().catch(fail); } };
-  (views[view] || vListe)(id);
+  const views = {
+    liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels,
+    teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'),
+    plz: (typeof viewPlzSettings === 'function' ? viewPlzSettings : () => { app.innerHTML = '<div class="card">PLZ-Einstellungen gerade nicht verfügbar. <a href="#v/liste">Zur Liste</a></div>'; }),
+    bon: () => { openBonView().catch(fail); },
+  };
+  try {
+    (views[view] || vListe)(id);
+  } catch (e) {
+    fail(e);
+    app.innerHTML = '<div class="card">Vorrat konnte nicht geladen werden. <button class="btn small" type="button" onclick="location.hash=\'#v/liste\';location.reload()">Erneut versuchen</button></div>';
+  }
 }
 
 function vMatches(it, f) {

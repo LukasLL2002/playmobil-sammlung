@@ -219,8 +219,8 @@ function offerLinks(it, cityInfo) {
   return { term, city, cityName, primary, others, all };
 }
 
-const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0, 10); };
-const isActiveOffer = o => o.gueltig_ab <= todayISO() && o.gueltig_bis >= todayISO();
+const offerTodayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0, 10); };
+const isActiveOffer = o => o.gueltig_ab <= offerTodayISO() && o.gueltig_bis >= offerTodayISO();
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('de-DE') : '–';
 
 async function loadAngebote(vorratId) {
@@ -283,8 +283,8 @@ async function openAngebote(it) {
         <div style="margin-top:.6rem">
           <label for="aoMarkt">Markt / Laden</label><input id="aoMarkt" required placeholder="z.B. REWE, Aldi">
           <div class="grid2"><div><label for="aoPreis">Preis (€)</label><input id="aoPreis" inputmode="decimal" required placeholder="1,29"></div>
-            <div><label for="aoBis">Gültig bis</label><input id="aoBis" type="date" required value="${esc(todayISO())}"></div></div>
-          <div class="grid2"><div><label for="aoAb">Gültig ab</label><input id="aoAb" type="date" value="${esc(todayISO())}"></div>
+            <div><label for="aoBis">Gültig bis</label><input id="aoBis" type="date" required value="${esc(offerTodayISO())}"></div></div>
+          <div class="grid2"><div><label for="aoAb">Gültig ab</label><input id="aoAb" type="date" value="${esc(offerTodayISO())}"></div>
             <div><label for="aoUrl">Link (optional)</label><input id="aoUrl" type="url" placeholder="https://…"></div></div>
           <label for="aoNotiz">Notiz (optional)</label><input id="aoNotiz" placeholder="z.B. 500g Packung">
           <button type="button" class="btn block" id="aoSave" style="margin-top:.6rem;background:#2e7d32">Speichern</button>
@@ -303,7 +303,7 @@ async function openAngebote(it) {
         const markt = d.querySelector('#aoMarkt').value.trim();
         const preis = parseDec(d.querySelector('#aoPreis').value);
         const gueltig_bis = d.querySelector('#aoBis').value;
-        const gueltig_ab = d.querySelector('#aoAb').value || todayISO();
+        const gueltig_ab = d.querySelector('#aoAb').value || offerTodayISO();
         if (!markt || preis == null || !gueltig_bis) throw new Error('Markt, Preis und Gültig-bis sind nötig.');
         if (gueltig_bis < gueltig_ab) throw new Error('„Gültig bis“ liegt vor „Gültig ab“.');
         const row = {
