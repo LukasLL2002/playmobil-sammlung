@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "checks": {
+    "parseCount": 3,
+    "hasMilk": true,
+    "butterQty2": true,
+    "noSumme": true,
+    "milkKat": true,
+    "milkUnit": true,
+    "banner": true,
+    "missHint": true,
+    "lineCards": 3,
+    "fieldMiss": true,
+    "afterSaveComplete": true,
+    "savedItems": true,
+    "fpSaved": true,
+    "noDupImport": true
+  }
+}

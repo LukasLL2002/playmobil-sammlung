@@ -305,6 +305,10 @@ function viewTeile() {
       <select id="fKiste"><option value="">Alle Kisten</option><option value="none" ${f.kiste === 'none' ? 'selected' : ''}>Ohne Kiste</option>${state.kisten.map(k => `<option value="${k.id}" ${String(k.id) === f.kiste ? 'selected' : ''}>${esc(kisteLabel(k))}</option>`).join('')}</select>
       <select id="fSet"><option value="">Alle Sets</option>${state.sets.map(s => `<option value="${s.id}" ${String(s.id) === f.set ? 'selected' : ''}>${esc(setLabel(s))}</option>`).join('')}</select>
     </div>
+    <div class="row" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
+      <a class="btn small secondary" href="#v/bon">📷 Kassenbon</a>
+      <a class="btn small" href="#v/artikel/neu" style="background:#2e7d32">＋ Artikel</a>
+    </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
     <a class="fab" href="#teil/neu" title="Neues Teil">＋</a>`;
@@ -779,13 +783,13 @@ async function loadVorrat() {
 }
 
 async function routeVorrat(view, id) {
-  const tab = { artikel: 'v/liste', ort: 'v/orte', etiketten: 'v/orte' }[view] || 'v/' + view;
+  const tab = { artikel: 'v/liste', ort: 'v/orte', etiketten: 'v/orte', bon: 'v/liste' }[view] || 'v/' + view;
   setMode('v', tab);
   if (!vstate.loaded) {
     app.innerHTML = '<div class="center muted" style="padding:3rem">Lädt Vorrat …</div>';
     try { await loadVorrat(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
-  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings };
+  const views = { liste: vListe, artikel: vForm, orte: vOrte, ort: vOrt, einkauf: vEinkauf, uebersicht: vStats, etiketten: vLabels, teilen: () => viewTeilen('vorrat'), import: () => viewImport('vorrat'), plz: viewPlzSettings, bon: viewBon };
   (views[view] || vListe)(id);
 }
 
@@ -879,7 +883,10 @@ function vListe() {
     </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
-    <a class="fab" href="#v/artikel/neu" title="Neuer Artikel" style="background:#2e7d32">＋</a>`;
+    <div class="fab-stack">
+      <a class="fab fab-secondary" href="#v/bon" title="Kassenbon scannen" style="background:#1565c0">📷</a>
+      <a class="fab" href="#v/artikel/neu" title="Neuer Artikel" style="background:#2e7d32">＋</a>
+    </div>`;
   const list = document.getElementById('list');
   const render = () => {
     const res = vstate.items.filter(i => vMatches(i, f));

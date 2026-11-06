@@ -1,0 +1,41 @@
+{
+  "text": "REWE Markt Northeim\n\nBon-Nr. 12345\n\nVOLLMILCH 3,5% 1,09 A\nButter 1,29 A\n2 x 0,99 1,98 A\nTomaten Rispe 2,49 B\nSpaghetti 0,89 A\nSUMME EUR 6,74\nBar 10,00\nRueckgeld 3,26\nMwSt A 7%\n\nVielen Dank\n",
+  "items": [
+    {
+      "name": "Vollmilch 3,5%",
+      "menge": 1,
+      "einheit": "Stück",
+      "preis": 1.09,
+      "total": 1.09,
+      "raw": "VOLLMILCH 3,5% 1,09 A",
+      "include": true
+    },
+    {
+      "name": "Butter",
+      "menge": 2,
+      "einheit": "Stück",
+      "preis": 0.99,
+      "total": 1.98,
+      "raw": "Butter 1,29 A | 2 x 0,99 1,98 A",
+      "include": true
+    },
+    {
+      "name": "Tomaten Rispe",
+      "menge": 1,
+      "einheit": "Stück",
+      "preis": 2.49,
+      "total": 2.49,
+      "raw": "Tomaten Rispe 2,49 B",
+      "include": true
+    },
+    {
+      "name": "Spaghetti",
+      "menge": 1,
+      "einheit": "Stück",
+      "preis": 0.89,
+      "total": 0.89,
+      "raw": "Spaghetti 0,89 A",
+      "include": true
+    }
+  ]
+}

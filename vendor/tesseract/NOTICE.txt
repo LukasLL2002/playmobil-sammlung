@@ -1,0 +1,4 @@
+Tesseract.js v7.0.0 (Apache-2.0) – https://github.com/naptha/tesseract.js
+tesseract.js-core v7.0.0 (Apache-2.0)
+deu.traineddata.gz from @tesseract.js-data/deu (Apache-2.0)
+Vendored for offline OCR in Sortiva Kassenbon – no remote OCR upload.

@@ -1,0 +1,536 @@
+// Sortiva – Kassenbon-OCR (Tesseract.js lokal, kein Upload)
+'use strict';
+
+const BON_DRAFT_KEY = () => 'bon_draft_v1_' + (owner?.() || 'anon');
+const BON_SAVED_KEY = () => 'bon_saved_v1_' + (owner?.() || 'anon');
+
+function tessBase() {
+  // Relativ zur aktuellen Seiten-URL (GitHub Pages Unterpfad ok)
+  try { return new URL('vendor/tesseract/', location.href).href.replace(/\/?$/, ''); }
+  catch { return 'vendor/tesseract'; }
+}
+
+async function ensureTesseract() {
+  if (window.Tesseract?.createWorker) return window.Tesseract;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = tessBase() + '/tesseract.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Tesseract konnte nicht geladen werden (vendor/tesseract).'));
+    document.head.appendChild(s);
+  });
+  if (!window.Tesseract?.createWorker) throw new Error('Tesseract global fehlt.');
+  return window.Tesseract;
+}
+
+async function resizeImageForOcr(file, maxSide = 2000) {
+  if (!file || !/^image\//.test(file.type)) throw new Error('Bitte JPG, PNG oder WebP wählen.');
+  if (file.size > 12 * 1024 * 1024) throw new Error('Bild zu groß (max. 12 MB).');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('Bild konnte nicht geladen werden.'));
+      i.src = url;
+    });
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    // leichte Kontrastverstärkung
+    try {
+      const id = ctx.getImageData(0, 0, w, h);
+      const d = id.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        const v = g < 140 ? Math.max(0, g - 20) : Math.min(255, g + 25);
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+      ctx.putImageData(id, 0, 0);
+    } catch { /* ignore */ }
+    const blob = await new Promise(r => c.toBlob(r, 'image/png', 0.92));
+    return blob || file;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function ocrReceipt(file, onProgress) {
+  const Tesseract = await ensureTesseract();
+  const img = await resizeImageForOcr(file);
+  const base = tessBase();
+  const worker = await Tesseract.createWorker('deu', 1, {
+    workerPath: base + '/worker.min.js',
+    corePath: base + '/',
+    langPath: base,
+    gzip: true,
+    logger: m => { if (onProgress && m?.status) onProgress(m); },
+  });
+  try {
+    const ret = await worker.recognize(img);
+    return String(ret?.data?.text || '');
+  } finally {
+    try { await worker.terminate(); } catch { /* */ }
+  }
+}
+
+const BON_IGNORE = /^(summe|gesamt|zwischensumme|zwischens\.|mwst|ust|netto|brutto|bar|gegeben|rückgeld|rueckgeld|wechselgeld|karte|girocard|visa|mastercard|ec[- ]?karte|kontaktlos|tse|bon[- ]?nr|kasse|beleg|datum|uhrzeit|filiale|markt|telefon|tel\.|www\.|http|eur\b|€|Vielen Dank|Danke|Auf Wiedersehen|Steuernummer|UID|IBAN|BIC|Kartenzahlung|Terminal)/i;
+const BON_FOODISH = /milch|joghurt|quark|butter|käse|kaese|sahne|brot|brötchen|broetchen|nudel|spaghetti|reis|mehl|zucker|salz|öl|oel|tomate|gurke|apfel|banane|orange|salat|fleisch|wurst|schinken|hack|hähnchen|haehnchen|fisch|thunfisch|wasser|saft|cola|kaffee|tee|schokolade|chips|müsli|muesli|marmelade|honig|ei\b|eier|joghurt|tiefkühl|tk-|gemüse|gemuese|obst|wein|bier|limo|joghurt|pudding|quark|frischkäse|margarine|sahne|joghurt|vollmilch|haltbare|bio|natur|joghurt|joghurt|joghurt/i;
+
+function parseEuroToken(s) {
+  const t = String(s || '').trim().replace(/\s/g, '').replace('€', '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function cleanProductName(raw) {
+  let s = String(raw || '')
+    .replace(/\b\d+[.,]\d{2}\b/g, ' ')
+    .replace(/\b\d+\s*[xX×]\s*/g, ' ')
+    .replace(/\b[AB]\b/g, ' ')
+    .replace(/[*#]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  s = s.replace(/^[\d\s.,€\-]+/, '').replace(/[\d\s.,€\-]+$/, '').trim();
+  // Title-ish
+  if (s && s === s.toUpperCase() && s.length > 2) {
+    s = s.toLowerCase().replace(/(^|[\s\-])\S/g, m => m.toUpperCase());
+  }
+  return s.slice(0, 60);
+}
+
+function looksLikeFoodName(name) {
+  if (!name || name.length < 3) return false;
+  if (BON_IGNORE.test(name)) return false;
+  if (/^\d+$/.test(name)) return false;
+  const letters = (name.match(/[a-zA-ZäöüÄÖÜß]/g) || []).length;
+  if (letters < 3) return false;
+  if (BON_FOODISH.test(name)) return true;
+  // allow generic grocery-looking words without digits-only
+  if (!/\d{4,}/.test(name) && letters >= 4) return true;
+  return false;
+}
+
+/** Reine Parser-Funktion (testbar ohne OCR). */
+function parseReceiptText(text) {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const items = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (BON_IGNORE.test(line)) continue;
+    if (/^\d{1,2}[./]\d{1,2}([./]\d{2,4})?/.test(line) && !/[a-zA-ZäöüÄÖÜß]{3,}/.test(line)) continue;
+
+    // Pattern: 2 x NAME 0,89 / 2x NAME 1,78
+    let m = line.match(/^(\d+)\s*[xX×]\s+(.+?)\s+(\d+[.,]\d{2})\s*[ABab]?\s*$/);
+    if (m) {
+      const qty = Number(m[1]);
+      const name = cleanProductName(m[2]);
+      const total = parseEuroToken(m[3]);
+      if (looksLikeFoodName(name) && qty > 0 && total != null) {
+        items.push({ name, menge: qty, einheit: 'Stück', preis: Math.round((total / qty) * 100) / 100, total, raw: line, include: true });
+        continue;
+      }
+    }
+
+    // Pattern: NAME 2 x 0,89 1,78
+    m = line.match(/^(.+?)\s+(\d+)\s*[xX×]\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*[ABab]?\s*$/);
+    if (m) {
+      const name = cleanProductName(m[1]);
+      const qty = Number(m[2]);
+      const unitP = parseEuroToken(m[3]);
+      const total = parseEuroToken(m[4]);
+      if (looksLikeFoodName(name) && qty > 0) {
+        items.push({ name, menge: qty, einheit: 'Stück', preis: unitP ?? (total != null ? Math.round((total / qty) * 100) / 100 : null), total, raw: line, include: true });
+        continue;
+      }
+    }
+
+    // Pattern: NAME 0,65 A  (single)
+    m = line.match(/^(.+?)\s+(\d+[.,]\d{2})\s*[ABab]?\s*$/);
+    if (m) {
+      const name = cleanProductName(m[1]);
+      const price = parseEuroToken(m[2]);
+      if (looksLikeFoodName(name) && price != null && price < 500) {
+        // skip obvious totals if name empty after clean
+        items.push({ name, menge: 1, einheit: 'Stück', preis: price, total: price, raw: line, include: true });
+        continue;
+      }
+    }
+
+    // Fortsetzungszeile: "2 x 0,99 1,98" ohne Produktname → vorheriger Artikel
+    m = line.match(/^(\d+)\s*[xX×]\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*[ABab]?\s*$/);
+    if (m && items.length) {
+      const qty = Number(m[1]);
+      const unitP = parseEuroToken(m[2]);
+      const total = parseEuroToken(m[3]);
+      const prev = items[items.length - 1];
+      if (qty > 0 && (unitP != null || total != null)) {
+        prev.menge = qty;
+        if (unitP != null) prev.preis = unitP;
+        else if (total != null) prev.preis = Math.round((total / qty) * 100) / 100;
+        prev.total = total;
+        prev.raw = (prev.raw || '') + ' | ' + line;
+        continue;
+      }
+    }
+
+    // Name only (next line may be price) – skip gibberish
+    if (looksLikeFoodName(cleanProductName(line)) && !/\d+[.,]\d{2}/.test(line)) {
+      const name = cleanProductName(line);
+      const next = lines[i + 1] || '';
+      const pm = next.match(/^(\d+)\s*[xX×]\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})/) || next.match(/^(\d+[.,]\d{2})\s*[ABab]?\s*$/);
+      if (pm) {
+        if (pm.length >= 4) {
+          const qty = Number(pm[1]); const unitP = parseEuroToken(pm[2]); const total = parseEuroToken(pm[3]);
+          items.push({ name, menge: qty, einheit: 'Stück', preis: unitP, total, raw: line + ' | ' + next, include: true });
+          i++;
+        } else {
+          const price = parseEuroToken(pm[1]);
+          items.push({ name, menge: 1, einheit: 'Stück', preis: price, total: price, raw: line + ' | ' + next, include: true });
+          i++;
+        }
+      }
+    }
+  }
+  // Deduplicate consecutive identical
+  const out = [];
+  for (const it of items) {
+    const prev = out[out.length - 1];
+    if (prev && norm(prev.name) === norm(it.name) && prev.preis === it.preis && prev.menge === it.menge) continue;
+    out.push(it);
+  }
+  return out;
+}
+
+function enrichBonItem(it) {
+  const sug = typeof productSuggest === 'function' ? productSuggest(it.name, null) : null;
+  const kategorie = it.kategorie || sug?.kategorie || '';
+  const einheit = it.einheit && it.einheit !== 'Stück' ? it.einheit : (sug?.einheit || it.einheit || 'Stück');
+  return {
+    ...it,
+    kategorie,
+    einheit,
+    ort_id: it.ort_id ?? sug?.ort_id ?? null,
+    mhd: it.mhd || '',
+    include: it.include !== false,
+    missing: [],
+  };
+}
+
+function bonMissing(it) {
+  const miss = [];
+  if (!String(it.name || '').trim()) miss.push('Name');
+  if (!(Number(it.menge) > 0)) miss.push('Menge');
+  // MHD/Ort optional – nur Hinweis, nie Pflicht
+  if (!it.mhd) miss.push('MHD');
+  if (!it.ort_id) miss.push('Ort');
+  return miss;
+}
+
+function loadBonDraft() {
+  try { return JSON.parse(localStorage.getItem(BON_DRAFT_KEY()) || 'null'); } catch { return null; }
+}
+function saveBonDraft(d) {
+  try { localStorage.setItem(BON_DRAFT_KEY(), JSON.stringify(d)); } catch { /* quota */ }
+}
+function clearBonDraft() { try { localStorage.removeItem(BON_DRAFT_KEY()); } catch { /* */ } }
+function isBonFingerprintSaved(fp) {
+  try {
+    const s = JSON.parse(localStorage.getItem(BON_SAVED_KEY()) || '[]');
+    return Array.isArray(s) && s.includes(fp);
+  } catch { return false; }
+}
+function markBonFingerprintSaved(fp) {
+  try {
+    const s = JSON.parse(localStorage.getItem(BON_SAVED_KEY()) || '[]');
+    const next = [...new Set([...(Array.isArray(s) ? s : []), fp])].slice(-40);
+    localStorage.setItem(BON_SAVED_KEY(), JSON.stringify(next));
+  } catch { /* */ }
+}
+
+async function fingerprintFile(file, text) {
+  const base = `${file?.name || ''}|${file?.size || 0}|${file?.lastModified || 0}|${String(text || '').slice(0, 400)}`;
+  if (crypto?.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(base));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  }
+  let h = 0; for (let i = 0; i < base.length; i++) h = ((h << 5) - h + base.charCodeAt(i)) | 0;
+  return 'h' + Math.abs(h);
+}
+
+function viewBon() {
+  const draft = loadBonDraft();
+  app.innerHTML = `
+    <a class="back" href="#v/liste">‹ Vorrat</a>
+    <h1>📷 Kassenbon</h1>
+    <div id="bonRoot"></div>`;
+  const root = document.getElementById('bonRoot');
+  if (draft?.phase === 'complete') {
+    root.innerHTML = `<div class="card">
+      <p><b>Erledigt</b> – ${esc(String(draft.savedCount || 0))} Artikel aus dem Bon übernommen.</p>
+      <p class="muted">Derselbe Bon wird nicht erneut importiert.</p>
+      <a class="btn block" href="#v/liste" style="background:#2e7d32">Zur Liste</a>
+      <button type="button" class="btn secondary block" id="bonNew" style="margin-top:.5rem">Neuen Bon scannen</button>
+    </div>`;
+    document.getElementById('bonNew').onclick = () => { clearBonDraft(); viewBon(); };
+    return;
+  }
+  if (draft?.phase === 'preview' && Array.isArray(draft.items)) {
+    renderBonPreview(root, draft);
+    return;
+  }
+  renderBonCapture(root);
+}
+
+function renderBonCapture(root) {
+  root.innerHTML = `<div class="card">
+    <p style="margin-top:0"><b>Bon fotografieren / aus Fotos wählen</b></p>
+    <p class="muted">Alles bleibt beim Einlesen auf deinem Gerät. Kein Upload an OCR-Dienste.</p>
+    <p class="muted" style="font-size:.9rem">Bitte prüfen – erkannt aus dem Foto (OCR, nicht immer fehlerfrei).</p>
+    <label class="btn block" style="background:#2e7d32;margin:.6rem 0">📷 Foto aufnehmen / wählen
+      <input id="bonFile" type="file" accept="image/*" capture="environment" hidden>
+    </label>
+    <div id="bonProg" class="muted hidden" style="margin:.5rem 0"></div>
+    <details style="margin-top:.8rem"><summary class="muted">Text einfügen (Fallback)</summary>
+      <textarea id="bonPaste" placeholder="OCR-Text oder manuell …" style="margin-top:.4rem"></textarea>
+      <button type="button" class="btn secondary block" id="bonParsePaste" style="margin-top:.4rem">Text auswerten</button>
+    </details>
+  </div>`;
+  const prog = document.getElementById('bonProg');
+  const fileEl = document.getElementById('bonFile');
+  let busy = false;
+  fileEl.onchange = async () => {
+    const file = fileEl.files?.[0]; if (!file || busy) return;
+    busy = true; fileEl.disabled = true;
+    prog.classList.remove('hidden');
+    prog.textContent = 'Lädt OCR …';
+    try {
+      const text = await ocrReceipt(file, m => {
+        const p = m.progress != null ? Math.round(m.progress * 100) : null;
+        prog.textContent = (m.status || 'OCR') + (p != null ? ` ${p}%` : '');
+      });
+      if (!text.trim()) throw new Error('Keine Schrift erkannt – bitte klareres Foto.');
+      const fp = await fingerprintFile(file, text);
+      if (isBonFingerprintSaved(fp)) {
+        toast('Dieser Bon wurde schon importiert.');
+        saveBonDraft({ phase: 'complete', savedCount: 0, fingerprint: fp });
+        return viewBon();
+      }
+      const parsed = parseReceiptText(text).map(enrichBonItem);
+      if (!parsed.length) {
+        root.innerHTML = `<div class="card"><p><b>Keine Artikel erkannt.</b></p>
+          <p class="muted">Foto gerader / schärfer versuchen oder Text unten einfügen.</p>
+          <details open><summary>Erkannten Text anzeigen</summary><pre class="bon-raw">${esc(text)}</pre></details>
+          <button type="button" class="btn secondary block" id="bonBack">Zurück</button></div>`;
+        document.getElementById('bonBack').onclick = () => viewBon();
+        return;
+      }
+      const draft = { phase: 'preview', fingerprint: fp, rawText: text, items: parsed, ts: Date.now() };
+      saveBonDraft(draft);
+      renderBonPreview(root, draft);
+    } catch (e) { fail(e); prog.textContent = ''; }
+    finally { busy = false; fileEl.disabled = false; }
+  };
+  document.getElementById('bonParsePaste').onclick = async () => {
+    const text = document.getElementById('bonPaste').value;
+    const parsed = parseReceiptText(text).map(enrichBonItem);
+    if (!parsed.length) return toast('Keine Artikel im Text gefunden.');
+    const fp = await fingerprintFile({ name: 'paste', size: text.length, lastModified: Date.now() }, text);
+    if (isBonFingerprintSaved(fp)) return toast('Diesen Text hast du schon importiert.');
+    const draft = { phase: 'preview', fingerprint: fp, rawText: text, items: parsed, ts: Date.now() };
+    saveBonDraft(draft);
+    renderBonPreview(root, draft);
+  };
+}
+
+function renderBonPreview(root, draft) {
+  const orte = vstate.orte || [];
+  const kats = [...new Set([...(typeof KATEGORIEN !== 'undefined' ? KATEGORIEN : []), ...((vstate.items || []).map(i => i.kategorie).filter(Boolean))])];
+  const eins = typeof EINHEITEN !== 'undefined' ? EINHEITEN : ['Stück', 'Packung', 'kg', 'l'];
+  root.innerHTML = `
+    <div class="card" style="background:#e8f5e9;border:1px solid #a5d6a7">
+      <b>Bitte prüfen – erkannt aus dem Foto</b>
+      <div class="muted" style="font-size:.9rem">Nur angehakte Zeilen werden gespeichert. MHD und Ort sind optional.</div>
+    </div>
+    <div id="bonLines" class="list"></div>
+    <button type="button" class="btn block" id="bonSave" style="background:#2e7d32;margin-top:.6rem">💾 Ausgewählte speichern</button>
+    <button type="button" class="btn secondary block" id="bonCancel" style="margin-top:.4rem">Verwerfen</button>
+    <details style="margin-top:.8rem"><summary class="muted">Erkannten Text anzeigen</summary>
+      <pre class="bon-raw">${esc(draft.rawText || '')}</pre></details>`;
+
+  const box = document.getElementById('bonLines');
+  const paint = () => {
+    box.innerHTML = draft.items.map((it, idx) => {
+      const miss = bonMissing(it).filter(x => x === 'MHD' || x === 'Ort');
+      const missHard = bonMissing(it).filter(x => x === 'Name' || x === 'Menge');
+      const missLabel = miss.length ? `Fehlt noch: ${miss.join(', ')}` : '';
+      return `<div class="card bon-line" data-i="${idx}" style="margin:0">
+        <label class="row" style="gap:.5rem;align-items:center;margin:0">
+          <input type="checkbox" data-f="include" ${it.include ? 'checked' : ''} style="width:auto">
+          <span class="grow"><b>${esc(it.name || '—')}</b></span>
+          <span class="muted">${it.preis != null ? euro(it.preis) : ''}</span>
+        </label>
+        <div class="grid2" style="margin-top:.4rem">
+          <div><label>Name</label><input data-f="name" value="${esc(it.name)}" ${missHard.includes('Name') ? 'class="field-miss"' : ''}></div>
+          <div><label>Menge</label><input data-f="menge" inputmode="decimal" value="${esc(String(it.menge ?? '').replace('.', ','))}" ${missHard.includes('Menge') ? 'class="field-miss"' : ''}></div>
+        </div>
+        <div class="grid2">
+          <div><label>Einheit</label><input data-f="einheit" list="bonEinList" value="${esc(it.einheit || '')}"></div>
+          <div><label>Einzelpreis (€)</label><input data-f="preis" inputmode="decimal" value="${it.preis != null ? esc(String(it.preis).replace('.', ',')) : ''}"></div>
+        </div>
+        <div class="grid2">
+          <div><label>Kategorie</label><input data-f="kategorie" list="bonKatList" value="${esc(it.kategorie || '')}"></div>
+          <div><label>MHD</label><input data-f="mhd" type="date" value="${esc(it.mhd || '')}" ${!it.mhd ? 'class="field-miss"' : ''}></div>
+        </div>
+        <label>Ort</label>
+        <select data-f="ort_id" ${!it.ort_id ? 'class="field-miss"' : ''}>
+          <option value="">– optional –</option>
+          ${orte.map(o => `<option value="${o.id}" ${String(o.id) === String(it.ort_id || '') ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
+        </select>
+        ${missLabel ? `<div class="muted" style="font-size:.85rem;margin-top:.3rem;color:#e65100">${esc(missLabel)}</div>` : ''}
+        <div class="muted" style="font-size:.75rem;margin-top:.2rem">${esc(it.raw || '')}</div>
+      </div>`;
+    }).join('') + `
+      <datalist id="bonKatList">${kats.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+      <datalist id="bonEinList">${eins.map(e => `<option value="${esc(e)}">`).join('')}</datalist>`;
+
+    box.querySelectorAll('.bon-line').forEach(card => {
+      const i = Number(card.dataset.i);
+      card.querySelectorAll('[data-f]').forEach(el => {
+        const ev = el.type === 'checkbox' || el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input';
+        el.addEventListener(ev, () => {
+          const f = el.dataset.f;
+          if (f === 'include') draft.items[i].include = el.checked;
+          else if (f === 'menge' || f === 'preis') {
+            try { draft.items[i][f] = parseDec(el.value); } catch { draft.items[i][f] = null; }
+          } else if (f === 'ort_id') draft.items[i].ort_id = el.value ? Number(el.value) : null;
+          else draft.items[i][f] = el.value;
+          saveBonDraft(draft);
+          const miss = bonMissing(draft.items[i]).filter(x => x === 'MHD' || x === 'Ort');
+          let hint = card.querySelector('.bon-miss');
+          if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'muted bon-miss';
+            hint.style.cssText = 'font-size:.85rem;margin-top:.3rem;color:#e65100';
+            card.appendChild(hint);
+          }
+          hint.textContent = miss.length ? ('Fehlt noch: ' + miss.join(', ')) : '';
+          card.querySelectorAll('[data-f=mhd],[data-f=ort_id]').forEach(el => {
+            const empty = el.dataset.f === 'ort_id' ? !el.value : !el.value;
+            el.classList.toggle('field-miss', empty);
+          });
+        });
+      });
+    });
+  };
+  paint();
+
+  document.getElementById('bonCancel').onclick = () => {
+    if (!confirm('Vorschau verwerfen?')) return;
+    clearBonDraft();
+    viewBon();
+  };
+  document.getElementById('bonSave').onclick = () => saveBonItems(draft);
+}
+
+async function saveBonItems(draft) {
+  const btn = document.getElementById('bonSave');
+  if (btn?.disabled) return;
+  if (draft.fingerprint && isBonFingerprintSaved(draft.fingerprint)) {
+    toast('Dieser Bon wurde schon gespeichert.');
+    draft.phase = 'complete';
+    saveBonDraft(draft);
+    return viewBon();
+  }
+  const selected = draft.items.filter(i => i.include !== false);
+  if (!selected.length) return toast('Keine Zeile ausgewählt.');
+  for (const it of selected) {
+    if (!String(it.name || '').trim() || !(Number(it.menge) > 0)) {
+      return toast('Bitte Name und Menge bei allen angehakten Zeilen prüfen.');
+    }
+  }
+  if (btn) btn.disabled = true;
+  toast('Speichert …', 8000);
+  const createdItemIds = [];
+  const createdChargeIds = [];
+  try {
+    for (const line of selected) {
+      const name = line.name.trim();
+      const menge = Math.max(0, Number(line.menge) || 0);
+      const einheit = (line.einheit || 'Stück').trim() || 'Stück';
+      const kategorie = (line.kategorie || '').trim() || null;
+      const ort_id = line.ort_id ? Number(line.ort_id) : null;
+      const mhd = line.mhd || null;
+      const preis = line.preis != null && line.preis !== '' ? Number(line.preis) : null;
+
+      const existing = (vstate.items || []).find(i => norm(i.name) === norm(name) && norm(i.einheit || '') === norm(einheit));
+      if (existing) {
+        const { data: ch, error } = await sb.from('vorrat_chargen').insert({
+          vorrat_id: existing.id, user_id: owner(), menge, mhd, ort_id: ort_id || existing.ort_id || null, notiz: 'Kassenbon',
+        }).select().single();
+        if (error) throw error;
+        createdChargeIds.push(ch.id);
+        (vstate.chargen[existing.id] ||= []).push(ch);
+        // Parent-Menge per DB-Trigger; Preis bestehender Artikel nicht überschreiben (außer leer)
+        if (existing.preis == null && preis != null) {
+          const up = await sb.from('vorrat').update({ preis }).eq('id', existing.id).select().single();
+          if (up.error) throw up.error;
+          if (up.data) Object.assign(existing, up.data);
+        }
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', existing.id).single();
+        if (fresh) {
+          Object.assign(existing, fresh);
+          vstate.items = vstate.items.map(x => x.id === fresh.id ? { ...existing } : x);
+        }
+      } else {
+        const row = {
+          name, kategorie, einheit, menge, mhd, preis, ort_id,
+          mindestbestand: null, barcode: null, notiz: 'Kassenbon', angebotsname: null,
+          gebinde_inhalt: null, basis_einheit: null, user_id: owner(),
+        };
+        const { data: created, error } = await sb.from('vorrat').insert(row).select().single();
+        if (error) throw error;
+        createdItemIds.push(created.id);
+        const { data: existingCh } = await sb.from('vorrat_chargen').select('id').eq('vorrat_id', created.id);
+        if (existingCh?.length) await sb.from('vorrat_chargen').delete().eq('vorrat_id', created.id);
+        const { data: ch, error: e2 } = await sb.from('vorrat_chargen').insert({
+          vorrat_id: created.id, user_id: owner(), menge, mhd, ort_id, notiz: 'Kassenbon',
+        }).select().single();
+        if (e2) throw e2;
+        createdChargeIds.push(ch.id);
+        const { data: fresh } = await sb.from('vorrat').select('*').eq('id', created.id).single();
+        vstate.items = [...vstate.items, fresh || created].sort(vsort);
+        vstate.chargen[created.id] = [ch];
+      }
+    }
+    markBonFingerprintSaved(draft.fingerprint);
+    draft.phase = 'complete';
+    draft.savedCount = selected.length;
+    saveBonDraft(draft);
+    toast(`${selected.length} Artikel gespeichert ✔`);
+    viewBon();
+  } catch (e) {
+    try {
+      for (const id of createdChargeIds) await sb.from('vorrat_chargen').delete().eq('id', id);
+      for (const id of createdItemIds) await sb.from('vorrat').delete().eq('id', id);
+      if (typeof loadVorrat === 'function') await loadVorrat();
+    } catch (e2) {
+      console.error('Rollback teilweise fehlgeschlagen', e2);
+      fail(e);
+      toast('Konnte nicht alles speichern; Rollback unvollständig – bitte Liste prüfen.', 6000);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    fail(e);
+    toast('Konnte nicht alles speichern, nichts angelegt.', 5000);
+    if (btn) btn.disabled = false;
+  }
+}
+
+window.parseReceiptText = parseReceiptText;
+window.enrichBonItem = enrichBonItem;
+window.viewBon = viewBon;

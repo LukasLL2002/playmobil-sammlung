@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bon harness</title>
+<link rel="stylesheet" href="../style.css?v=20261106-6">
+<style>
+#testbar{position:sticky;top:0;z-index:999;background:#111;color:#fff;padding:.5rem;font:11px monospace;white-space:pre-wrap}
+#testbar.ok{background:#1b5e20}#testbar.fail{background:#b71c1c}
+main{max-width:390px;margin:0 auto;padding:0 .6rem 4rem}
+</style></head><body>
+<div id="testbar">harness…</div>
+<header id="topbar"><a class="brand" href="#">📦 Sortiva · Vorrat</a></header>
+<main id="app"></main><div id="toast" class="hidden"></div>
+<script>
+window.__errors=[];
+window.addEventListener('error',e=>window.__errors.push(String(e.message||e)));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const euro = n => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+const toast = (m) => { document.getElementById('toast').textContent=m; };
+const fail = e => { console.error(e); window.__errors.push(String(e.message||e)); };
+const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const owner = () => 'user-1';
+const parseDec = v => { v = String(v ?? '').trim().replace(/\s|€/g, '').replace(',', '.'); if (v === '') return null; const n = Number(v); if (isNaN(n)) throw new Error('no'); return n; };
+const vsort = (a,b)=>a.name.localeCompare(b.name,'de');
+const KATEGORIEN = ['Milchprodukte','Gemüse','Nudeln'];
+const EINHEITEN = ['Stück','Packung','kg','l'];
+const PRODUCT_HINTS = [];
+function productSuggest(name) {
+  const n = norm(name);
+  if (n.includes('milch')) return { kategorie:'Milchprodukte', einheit:'l' };
+  if (n.includes('butter')) return { kategorie:'Milchprodukte', einheit:'Packung' };
+  if (n.includes('tomat')) return { kategorie:'Gemüse', einheit:'kg' };
+  return null;
+}
+window.vstate = { loaded:true, orte:[{id:1,name:'Kühlschrank'}], items:[
+  { id:10, name:'Butter', einheit:'Packung', kategorie:'Milchprodukte', menge:1, preis:1.1, ort_id:1 }
+], chargen:{10:[{id:100,vorrat_id:10,menge:1}]} };
+window.state = { user:{id:'user-1'} };
+// mock supabase
+const db = { vorrat:[], chargen:[], seq:200 };
+window.sb = {
+  from(table) {
+    const self = {
+      _t: table, _rows: null, _filters: [], _op: null, _payload: null,
+      select(){ return this; },
+      insert(row){ this._op='insert'; this._payload=row; return this; },
+      update(row){ this._op='update'; this._payload=row; return this; },
+      delete(){ this._op='delete'; return this; },
+      eq(k,v){ this._filters.push([k,v]); return this; },
+      async single(){
+        if (this._op==='insert') {
+          const id = ++db.seq;
+          const row = Array.isArray(this._payload) ? null : { ...this._payload, id };
+          if (this._t==='vorrat') { db.vorrat.push(row); return { data: row, error: null }; }
+          if (this._t==='vorrat_chargen') { db.chargen.push(row); return { data: row, error: null }; }
+        }
+        if (this._op==='update' && this._t==='vorrat') {
+          const id = this._filters.find(f=>f[0]==='id')?.[1];
+          const it = vstate.items.find(x=>x.id===id) || db.vorrat.find(x=>x.id===id);
+          if (it) Object.assign(it, this._payload);
+          return { data: it, error: null };
+        }
+        if (this._op==='delete') return { data:null, error:null };
+        // select single
+        const id = this._filters.find(f=>f[0]==='id')?.[1];
+        if (this._t==='vorrat') {
+          const it = vstate.items.find(x=>x.id===id) || db.vorrat.find(x=>x.id===id);
+          if (it && this._payload?.menge) {} // noop
+          // after charge insert, bump menge
+          const charges = [...(vstate.chargen[id]||[]), ...db.chargen.filter(c=>c.vorrat_id===id)];
+          if (it) {
+            const sum = charges.reduce((s,c)=>s+Number(c.menge||0),0);
+            return { data: { ...it, menge: sum || it.menge }, error: null };
+          }
+        }
+        return { data: null, error: null };
+      },
+      then(res,rej){ // await without single = select list
+        return (async()=>{
+          if (this._op==='insert' && Array.isArray(this._payload)) {
+            const rows = this._payload.map(r=>({...r,id:++db.seq}));
+            if (this._t==='vorrat_chargen') db.chargen.push(...rows);
+            return res({ data: rows, error: null });
+          }
+          if (this._op==='delete') return res({ data:null, error:null });
+          if (this._t==='vorrat_chargen') {
+            const vid = this._filters.find(f=>f[0]==='vorrat_id')?.[1];
+            return res({ data: db.chargen.filter(c=>c.vorrat_id===vid), error:null });
+          }
+          return res({ data: [], error: null });
+        })().catch(rej);
+      }
+    };
+    return self;
+  }
+};
+</script>
+<script src="../receipt.js?v=20261106-6"></script>
+<script>
+(async () => {
+  const bar = document.getElementById('testbar');
+  const report = { ok:false, checks:{} };
+  try {
+    const sample = `VOLLMILCH 3,5% 1,09 A\nButter 1,29 A\n2 x 0,99 1,98 A\nTomaten Rispe 2,49 B\nSUMME EUR 5,56\nBar 10,00`;
+    const parsed = parseReceiptText(sample).map(enrichBonItem);
+    report.checks.parseCount = parsed.length;
+    report.checks.hasMilk = parsed.some(i=>/milch/i.test(i.name));
+    report.checks.butterQty2 = parsed.find(i=>/butter/i.test(i.name))?.menge === 2;
+    report.checks.noSumme = !parsed.some(i=>/summe|bar/i.test(i.name));
+    report.checks.milkKat = parsed.find(i=>/milch/i.test(i.name))?.kategorie === 'Milchprodukte';
+    report.checks.milkUnit = parsed.find(i=>/milch/i.test(i.name))?.einheit === 'l';
+
+    const draft = { phase:'preview', fingerprint:'testfp1', rawText:sample, items:parsed, ts:Date.now() };
+    saveBonDraft(draft);
+    viewBon();
+    await new Promise(r=>setTimeout(r,50));
+    report.checks.banner = !!document.body.innerText.includes('Bitte prüfen');
+    report.checks.missHint = [...document.querySelectorAll('.bon-line')].some(el => /Fehlt noch: MHD/.test(el.textContent));
+    report.checks.lineCards = document.querySelectorAll('.bon-line').length;
+    report.checks.fieldMiss = document.querySelectorAll('.field-miss').length >= 1;
+
+    // save once
+    await saveBonItems(draft);
+    await new Promise(r=>setTimeout(r,80));
+    report.checks.afterSaveComplete = loadBonDraft()?.phase === 'complete';
+    report.checks.savedItems = (vstate.items.length >= 3); // Butter existing + milk + tomatoes
+    report.checks.fpSaved = isBonFingerprintSaved('testfp1');
+
+    // duplicate save blocked
+    draft.phase = 'preview';
+    draft.items = parsed.map(enrichBonItem);
+    const before = vstate.items.length;
+    await saveBonItems(draft);
+    report.checks.noDupImport = vstate.items.length === before || loadBonDraft()?.phase === 'complete';
+
+    report.ok = report.checks.hasMilk && report.checks.butterQty2 && report.checks.noSumme
+      && report.checks.banner && report.checks.missHint && report.checks.afterSaveComplete
+      && report.checks.fpSaved && !window.__errors.length;
+    bar.textContent = JSON.stringify(report,null,2);
+    bar.className = report.ok ? 'ok' : 'fail';
+    window.__RESULT = report;
+  } catch (e) {
+    bar.textContent = String(e.stack||e);
+    bar.className = 'fail';
+    window.__RESULT = { ok:false, error:String(e) };
+  }
+})();
+</script>
+</body></html>

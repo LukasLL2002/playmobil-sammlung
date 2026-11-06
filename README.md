@@ -3,7 +3,7 @@
 Sortiva – sortieren & bewahren. Web-App für Playmobil-Sammlung, Vorratskammer, LEGO und eigene Bereiche.
 Statische Seite (HTML/CSS/JS) mit Supabase als Backend. Im Code steht nur der öffentliche Publishable Key; der Zugriff ist per Row Level Security auf angemeldete Nutzer beschränkt.
 
-**Live:** https://sortivaapp.github.io/
+**Live:** https://lukasll2002.github.io/playmobil-sammlung/
 
 ## Bereiche
 
@@ -19,3 +19,7 @@ Tab „👥 Teilen“: per E-Mail einladen (*nur lesen* / *bearbeiten*). Geteilt
 ## Technik
 
 GitHub Pages + Supabase (Auth, DB, Storage). Kein Scraping von Flyer-Preisen – nur Deep-Links zu Prospekt-Anbietern.
+
+## Vorrat · Kassenbon
+
+Bon fotografieren → OCR (Tesseract.js, lokal unter `vendor/tesseract/`) → Vorschau → Speichern. Kein Upload an OCR-Dienste.
