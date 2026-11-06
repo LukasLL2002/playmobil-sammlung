@@ -6,9 +6,14 @@
 <meta name="theme-color" content="#1565c0">
 <meta name="description" content="Sortiva – sortieren, bewahren: Playmobil, Vorratskammer, LEGO und mehr.">
 <meta name="application-name" content="Sortiva">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sortiva">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Sortiva</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>">
-<link rel="stylesheet" href="style.css?v=20261106-11">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css?v=20261106-12">
 </head>
 <body>
 <header id="topbar">
@@ -34,12 +39,13 @@
 
 <div id="toast" class="hidden"></div>
 
-<!-- Nur Kern-Libs beim Start (lokal). QR, Tabellen und Bon-Scanner nach Bedarf. -->
+<!-- Install-UI früh; Kern-Libs danach. QR/Tabellen/Bon nach Bedarf. -->
+<script src="install.js?v=20261106-12"></script>
 <script src="vendor/supabase/supabase.min.js?v=2.86.0"></script>
-<script src="app.js?v=20261106-11"></script>
-<script src="import.js?v=20261106-11"></script>
-<script src="lego.js?v=20261106-11"></script>
-<script src="custom.js?v=20261106-11"></script>
-<script src="offers.js?v=20261106-11"></script>
+<script src="app.js?v=20261106-12"></script>
+<script src="import.js?v=20261106-12"></script>
+<script src="lego.js?v=20261106-12"></script>
+<script src="custom.js?v=20261106-12"></script>
+<script src="offers.js?v=20261106-12"></script>
 </body>
 </html>

@@ -1,0 +1,79 @@
+{
+  "errors": [],
+  "manOk": true,
+  "man": {
+    "ok": true,
+    "json": {
+      "name": "Sortiva",
+      "short_name": "Sortiva",
+      "description": "Sortiva – Sammlungen und Vorrat sortieren und behalten. Installieren und vom Startbildschirm oder Desktop öffnen.",
+      "start_url": "./?quelle=app",
+      "scope": "./",
+      "display": "standalone",
+      "orientation": "any",
+      "background_color": "#f5f7fb",
+      "theme_color": "#1565c0",
+      "lang": "de",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "icons/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "icons/icon-maskable-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "maskable"
+        }
+      ]
+    }
+  },
+  "sw": {
+    "supported": true,
+    "scope": "http://127.0.0.1:8780/",
+    "active": true,
+    "scriptURL": "http://127.0.0.1:8780/sw.js"
+  },
+  "installUi": {
+    "headerBtn": true,
+    "tile": true,
+    "tileText": "App installieren\n\nEinmal installieren – dann direkt vom Startbildschirm oder Desktop öffnen.\n\nApp installieren"
+  },
+  "toastText": "Über das Browser-Menü „App installieren“ oder „Zum Bildschirm hinzufügen“ wählen.",
+  "cacheInfo": {
+    "keys": [
+      "sortiva-v20261106-12"
+    ],
+    "urlCount": 14,
+    "sample": [
+      "http://127.0.0.1:8780/",
+      "http://127.0.0.1:8780/index.html",
+      "http://127.0.0.1:8780/manifest.webmanifest",
+      "http://127.0.0.1:8780/style.css?v=20261106-12",
+      "http://127.0.0.1:8780/import.js?v=20261106-12",
+      "http://127.0.0.1:8780/lego.js?v=20261106-12",
+      "http://127.0.0.1:8780/app.js?v=20261106-12",
+      "http://127.0.0.1:8780/custom.js?v=20261106-12",
+      "http://127.0.0.1:8780/icons/icon-192.png",
+      "http://127.0.0.1:8780/offers.js?v=20261106-12",
+      "http://127.0.0.1:8780/install.js?v=20261106-12",
+      "http://127.0.0.1:8780/icons/icon-512.png"
+    ],
+    "hasSupabaseApi": false,
+    "hasIndex": true,
+    "hasAppJs": true,
+    "hasOcr": false
+  },
+  "offlineTitle": "Sortiva",
+  "offlineHasSortiva": true,
+  "offlineHardError": [],
+  "noTodayClash": true
+}
