@@ -60,11 +60,11 @@ function viewPlzSettings() {
     <div class="card">
       <h2 style="margin-top:0">Bevorzugte Angebotsseite</h2>
       <select id="src" style="margin:0">
-        <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''}>MeinProspekt (Standard)</option>
-        <option value="kaufda" ${getOfferSource()==='kaufda'?'selected':''}>kaufDA</option>
-        <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru</option>
+        <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''}>MeinProspekt (alle Märkte vor Ort)</option>
+        <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru (Produktsuche)</option>
+        <option value="google" ${getOfferSource()==='google'?'selected':''}>Google-Suche (Fallback)</option>
       </select>
-      <p class="muted" style="font-size:.85rem">Öffnet die gefilterte Liste beim Anbieter – keine Preise in der App.</p>
+      <p class="muted" style="font-size:.85rem">Öffnet Kataloge/Suche beim Anbieter – keine Preise und kein Scraping in der App. Stadtseite und Marktguru sind live geprüft (kein Produkt-404).</p>
     </div>
     <div class="card">
       <h2 style="margin-top:0">Märkte in der Nähe</h2>
@@ -154,40 +154,69 @@ async function loadMaerkte(el) {
   }
 }
 
-const OFFER_SRC_KEY = 'vorratOfferSource'; // meinprospekt | kaufda | marktguru
+const OFFER_SRC_KEY = 'vorratOfferSource'; // meinprospekt | marktguru | google
 function getOfferSource() {
-  const v = localStorage.getItem(OFFER_SRC_KEY);
-  return ['meinprospekt', 'kaufda', 'marktguru'].includes(v) ? v : 'meinprospekt';
+  let v = localStorage.getItem(OFFER_SRC_KEY);
+  if (v === 'kaufda') v = 'meinprospekt'; // alter Wert → stabile Stadtseite
+  return ['meinprospekt', 'marktguru', 'google'].includes(v) ? v : 'meinprospekt';
 }
 function setOfferSource(v) {
-  if (['meinprospekt', 'kaufda', 'marktguru'].includes(v)) localStorage.setItem(OFFER_SRC_KEY, v);
+  if (['meinprospekt', 'marktguru', 'google'].includes(v)) localStorage.setItem(OFFER_SRC_KEY, v);
 }
 
-/** Öffentlicher Listen-/Such-Link (kein Angebot-ID, kein Scraping). */
+/** Öffentlicher Listen-/Such-Link (kein Angebot-ID, kein Scraping, keine Produkt-Slug-404s). */
 function offerSearchTerm(it) {
   const custom = String(it.angebotsname || '').trim();
   if (custom) return custom.slice(0, 40);
-  // Kein EAN in Prospekt-Slugs – generischer Produktname/Kategorie
   const raw = (it.name || it.kategorie || '').trim();
   const stop = new Set(['und', 'oder', 'der', 'die', 'das', 'mit', 'ohne', 'bio', 'von', 'für', 'gehackt', 'frische', 'frisch']);
   const words = raw.split(/[\s,/|()-]+/).filter(w => w && !stop.has(w.toLowerCase()) && !/^\d/.test(w) && w.length > 1);
   return (words.slice(0, 2).join(' ') || raw).slice(0, 40);
 }
 
-function offerLinks(it, _cityInfo) {
-  const term = offerSearchTerm(it);
-  const pslug = productSlug(term);
+/**
+ * Nur verifizierte Routen:
+ * - MeinProspekt Stadt: /{city} (alle Prospekte vor Ort) – Northeim 200
+ * - Marktguru Suche: /search/{q} – 200
+ * - Google Fallback: search?q= Stadt Produkt Angebote
+ * Keine /angebote/{slug}-Produktpfade (oft 404 bei unbekannten Slugs).
+ */
+function offerLinks(it, cityInfo) {
+  const term = offerSearchTerm(it) || (it.name || 'Angebote');
   const q = encodeURIComponent(term);
-  // Nationale Produktlisten (Stadt+Produkt oft 404, z.B. /northeim/angebote/milch). Alternativen ohne regionalen Claim.
-  const kaufSlug = encodeURIComponent(String(term).replace(/\s+/g, '-'));
-  const all = {
-    meinprospekt: { id: 'meinprospekt', name: 'MeinProspekt', url: `https://www.meinprospekt.de/angebote/${pslug}` },
-    kaufda: { id: 'kaufda', name: 'kaufDA', url: `https://www.kaufda.de/Angebote/${kaufSlug}` },
-    marktguru: { id: 'marktguru', name: 'Marktguru', url: `https://www.marktguru.de/search/${q}` },
+  const city = cityInfo?.slug;
+  const cityName = cityInfo?.city || city || '';
+  const gq = encodeURIComponent([cityName, term, 'Angebote'].filter(Boolean).join(' '));
+  const all = {};
+  if (city) {
+    all.meinprospekt = {
+      id: 'meinprospekt',
+      name: 'MeinProspekt (alle Märkte)',
+      short: 'Angebote ansehen',
+      url: `https://www.meinprospekt.de/${city}`,
+      note: `Prospekte für ${cityName} – Kataloge der Märkte vor Ort (kein automatischer Produktmatch).`,
+    };
+  }
+  if (term.trim()) {
+    all.marktguru = {
+      id: 'marktguru',
+      name: 'Marktguru',
+      short: 'Bei Marktguru suchen',
+      url: `https://www.marktguru.de/search/${q}`,
+      note: `Suche nach „${term}“ bei Marktguru.`,
+    };
+  }
+  all.google = {
+    id: 'google',
+    name: 'Google-Suche',
+    short: 'Angebote suchen',
+    url: `https://www.google.com/search?q=${gq}`,
+    note: `Websuche: ${cityName} ${term} Angebote (Fallback, kein Katalog).`,
   };
   const pref = getOfferSource();
-  const primary = all[pref] || all.meinprospekt;
-  return { term, primary, others: Object.values(all).filter(l => l.id !== primary.id) };
+  const primary = all[pref] || all.meinprospekt || all.marktguru || all.google;
+  const others = Object.values(all).filter(l => l.id !== primary.id);
+  return { term, city, cityName, primary, others, all };
 }
 
 const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0, 10); };
@@ -231,29 +260,33 @@ async function openAngebote(it) {
         <div class="muted" style="font-size:.85rem">gültig ${esc(fmtDate(best.gueltig_ab))} – ${esc(fmtDate(best.gueltig_bis))} · Von dir erfasst</div>
         ${best.notiz ? `<div class="muted" style="font-size:.85rem">${esc(best.notiz)}</div>` : ''}
         ${best.quelle_url ? `<a class="btn small secondary" href="${esc(best.quelle_url)}" target="_blank" rel="noopener">Quelle / Beleg ↗</a>` : ''}
-      </div>` : `<p class="muted">Kein selbst erfasstes Angebot. Extern die Anbieter-Liste öffnen (keine Live-Preise in der App).</p>`}
+      </div>` : `<p class="muted">Kein selbst erfasstes Angebot. Externe Links öffnen Kataloge/Suche – keine Live-Preise in der App.</p>`}
 
-      ${primary ? `<a class="btn block" id="aoOpen" style="background:#2e7d32;margin:.4rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">Beste Angebote bei ${esc(primary.name)} öffnen ↗</a>
-        <p class="muted" style="font-size:.85rem;margin:.2rem 0 .5rem">„${esc(pack.term)}“ · Katalog beim Anbieter${info?.city ? ' (Ort: ' + esc(info.city) + ')' : ''}.</p>
-        <div class="row" style="flex-wrap:wrap;gap:.4rem;align-items:center;margin-bottom:.6rem">
-          <label class="muted" style="font-size:.85rem;margin:0">Quelle:</label>
-          <select id="aoSrc" style="flex:1;min-width:8rem;margin:0">
-            <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''}>MeinProspekt</option>
-            <option value="kaufda" ${getOfferSource()==='kaufda'?'selected':''}>kaufDA</option>
-            <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''}>Marktguru</option>
+      ${primary ? `
+        <a class="btn block" id="aoOpen" style="background:#2e7d32;margin:.5rem 0" href="${esc(primary.url)}" target="_blank" rel="noopener">${esc(primary.short || 'Angebote ansehen')} ↗</a>
+        <p class="muted" style="font-size:.85rem;margin:.2rem 0 .6rem">${esc(primary.note || '')}</p>
+        <div class="row" style="flex-wrap:wrap;gap:.4rem;align-items:center;margin-bottom:.4rem">
+          <label for="aoSrc" class="muted" style="font-size:.85rem;margin:0">Quelle:</label>
+          <select id="aoSrc" style="flex:1;min-width:9rem;margin:0">
+            <option value="meinprospekt" ${getOfferSource()==='meinprospekt'?'selected':''} ${pack.all.meinprospekt ? '' : 'disabled'}>MeinProspekt (alle Märkte)</option>
+            <option value="marktguru" ${getOfferSource()==='marktguru'?'selected':''} ${pack.all.marktguru ? '' : 'disabled'}>Marktguru (Suche)</option>
+            <option value="google" ${getOfferSource()==='google'?'selected':''}>Google-Suche (Fallback)</option>
           </select>
-          ${pack.others.map(l => `<a class="btn small secondary" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join('')}
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem">
+          ${pack.others.map(l => `<a class="btn small secondary" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)} ↗</a>`).join('')}
         </div>`
-        : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, dann Anbieter-Liste öffnen.</p>`}
+        : `<p class="muted"><a href="#v/plz">PLZ setzen</a>, damit die Stadt-Prospekte geöffnet werden können.</p>
+           <a class="btn block secondary" href="https://www.google.com/search?q=${encodeURIComponent((it.angebotsname || it.name || '') + ' Angebote')}" target="_blank" rel="noopener">Angebote suchen (Google) ↗</a>`}
 
       <details ${!best ? 'open' : ''}><summary><b>＋ Angebot erfassen</b> <span class="muted">(von dir, kein Live-Preis)</span></summary>
         <div style="margin-top:.6rem">
-          <label>Markt / Laden</label><input id="aoMarkt" required placeholder="z.B. REWE, Aldi">
-          <div class="grid2"><div><label>Preis (€)</label><input id="aoPreis" inputmode="decimal" required placeholder="1,29"></div>
-            <div><label>Gültig bis</label><input id="aoBis" type="date" required value="${esc(todayISO())}"></div></div>
-          <div class="grid2"><div><label>Gültig ab</label><input id="aoAb" type="date" value="${esc(todayISO())}"></div>
-            <div><label>Link (optional)</label><input id="aoUrl" type="url" placeholder="https://…"></div></div>
-          <label>Notiz (optional)</label><input id="aoNotiz" placeholder="z.B. 500g Packung">
+          <label for="aoMarkt">Markt / Laden</label><input id="aoMarkt" required placeholder="z.B. REWE, Aldi">
+          <div class="grid2"><div><label for="aoPreis">Preis (€)</label><input id="aoPreis" inputmode="decimal" required placeholder="1,29"></div>
+            <div><label for="aoBis">Gültig bis</label><input id="aoBis" type="date" required value="${esc(todayISO())}"></div></div>
+          <div class="grid2"><div><label for="aoAb">Gültig ab</label><input id="aoAb" type="date" value="${esc(todayISO())}"></div>
+            <div><label for="aoUrl">Link (optional)</label><input id="aoUrl" type="url" placeholder="https://…"></div></div>
+          <label for="aoNotiz">Notiz (optional)</label><input id="aoNotiz" placeholder="z.B. 500g Packung">
           <button type="button" class="btn block" id="aoSave" style="margin-top:.6rem;background:#2e7d32">Speichern</button>
         </div></details>
 
@@ -264,7 +297,8 @@ async function openAngebote(it) {
           <button type="button" class="btn small danger" data-del-o="${o.id}">🗑️</button>
         </div>`).join('')}</div>` : ''}`;
 
-    d.querySelector('#aoSave')?.addEventListener('click', async () => {
+    d.querySelector('#aoSave')?.addEventListener('click', async e => {
+      e.preventDefault();
       try {
         const markt = d.querySelector('#aoMarkt').value.trim();
         const preis = parseDec(d.querySelector('#aoPreis').value);
@@ -283,9 +317,10 @@ async function openAngebote(it) {
         list = [...list, data];
         toast('Angebot gespeichert.');
         render();
-      } catch (e) { fail(e); }
+      } catch (err) { fail(err); }
     });
-    d.querySelectorAll('[data-del-o]').forEach(btn => btn.onclick = async () => {
+    d.querySelectorAll('[data-del-o]').forEach(btn => btn.onclick = async e => {
+      e.preventDefault();
       if (!confirm('Angebot löschen?')) return;
       const id = Number(btn.dataset.delO);
       const { error } = await sb.from('vorrat_angebote').delete().eq('id', id);

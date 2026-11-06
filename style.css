@@ -138,3 +138,14 @@ select{appearance:auto;-webkit-appearance:menulist;cursor:pointer}
 .name-hint .btn{min-height:36px;padding:.35rem .7rem}
 .charge-card label{margin-top:.45rem}
 #chargenBox h2{font-size:1.15rem}
+
+.mhd-row{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem}
+.mhd-row input[data-f=menge]{width:4.5rem;flex:0 0 auto}
+.mhd-row input[data-f=mhd]{width:auto;min-width:9.5rem;flex:1 1 auto}
+.mhd-inline{margin:0;font-weight:600;font-size:.9rem}
+.mhd-unit{font-size:.95rem;white-space:nowrap}
+.mhd-dot{color:var(--muted)}
+.mhd-x{min-height:40px;padding:.4rem .65rem;margin:0}
+.mhd-more{margin-top:.45rem}
+.mhd-more summary{cursor:pointer;font-size:.9rem}
+#chargenBox .charge-card{padding:.7rem .8rem}
