@@ -99,9 +99,11 @@ async function ensureSet(nummer, cache, table = 'sets') {
   if (!nummer) return null;
   if (cache.has(nummer)) return cache.get(nummer);
   let list = table === 'sets' ? state.sets : lstate.sets;
-  let s = list.find(x => String(x.set_nummer) === String(nummer));
+  // Import ordnet immer der „Reserve“ zu (wie bisher die Sets)
+  let s = list.find(x => setArt(x) === 'reserve' && String(x.set_nummer) === String(nummer))
+    || list.find(x => setArt(x) === 'reserve' && normNr(x.set_nummer) === normNr(nummer));
   if (!s) {
-    const { data, error } = await sb.from(table).insert({ set_nummer: String(nummer), user_id: owner() }).select().single();
+    const { data, error } = await sb.from(table).insert({ set_nummer: String(nummer), art: 'reserve', user_id: owner() }).select().single();
     if (error) throw error; s = data;
     if (table === 'sets') state.sets = [...state.sets, s].sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
     else lstate.sets = [...lstate.sets, s].sort((a, b) => sortNat(a.set_nummer, b.set_nummer));

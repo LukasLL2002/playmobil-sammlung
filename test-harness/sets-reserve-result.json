@@ -1,0 +1,300 @@
+{
+  "when": "2026-11-10T15:34:12.283Z",
+  "viewport": "390x844",
+  "results": [
+    {
+      "name": "no truncation @390px: teile",
+      "pass": true,
+      "info": {
+        "items": 2,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: kiste",
+      "pass": true,
+      "info": {
+        "items": 2,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: reserve",
+      "pass": true,
+      "info": {
+        "items": 3,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: reserveDetail",
+      "pass": true,
+      "info": {
+        "items": 2,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: legoTeile",
+      "pass": true,
+      "info": {
+        "items": 1,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: legoKiste",
+      "pass": true,
+      "info": {
+        "items": 1,
+        "bad": []
+      }
+    },
+    {
+      "name": "no truncation @390px: legoReserve",
+      "pass": true,
+      "info": {
+        "items": 1,
+        "bad": []
+      }
+    },
+    {
+      "name": "compact price line",
+      "pass": true,
+      "info": "0,76 € je Stück · 2,28 € gesamt"
+    },
+    {
+      "name": "price in own line, quantity right",
+      "pass": true,
+      "info": {
+        "priceInInfo": true,
+        "rightText": "3×"
+      }
+    },
+    {
+      "name": "Reserve shows old sets",
+      "pass": true,
+      "info": {
+        "resN": 3,
+        "tabs": [
+          "🔍Teile",
+          "📦Kisten",
+          "🏰Reserve",
+          "🎁Sets",
+          "📊Übersicht",
+          "👥Teilen"
+        ]
+      }
+    },
+    {
+      "name": "new Sets tab is empty",
+      "pass": true,
+      "info": {
+        "setsEmpty": 0
+      }
+    },
+    {
+      "name": "create set in Sets (art=set)",
+      "pass": true,
+      "info": {
+        "id": 1001,
+        "created_at": "2026-11-10T15:33:56.503Z",
+        "set_nummer": "100",
+        "name": "Erstes",
+        "notiz": null,
+        "bilder": [],
+        "art": "set",
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "same number in other kind is allowed",
+      "pass": true
+    },
+    {
+      "name": "duplicate prompt shows existing tile",
+      "pass": true,
+      "info": "Schon vorhanden – überschreiben?\n      In „Sets“ gibt es die Nummer 100 schon:\n      \n        100 Erstes\n        0 Teile zugeordnet · 1 Foto(s)\n      Bei „Ja“ w"
+    },
+    {
+      "name": "\"Nein\" returns to editing, nothing saved",
+      "pass": true,
+      "info": {
+        "stillOpen": " 1-0 0 "
+      }
+    },
+    {
+      "name": "\"Ja\" overwrites only number + name",
+      "pass": true,
+      "info": {
+        "before": {
+          "n": "100",
+          "name": "Erstes",
+          "notiz": "Bleibt",
+          "bilder": [
+            "11111111-1111-1111-1111-111111111111/teile/06726857-3dd4-4caa-bc6c-108cbe55c5c8.jpg"
+          ]
+        },
+        "after": {
+          "n": "1-0 0",
+          "name": "Überschrieben",
+          "notiz": "Bleibt",
+          "bilder": [
+            "11111111-1111-1111-1111-111111111111/teile/06726857-3dd4-4caa-bc6c-108cbe55c5c8.jpg"
+          ]
+        }
+      }
+    },
+    {
+      "name": "overwrite update payload = {set_nummer, name}",
+      "pass": true,
+      "info": {
+        "set_nummer": "1-0 0",
+        "name": "Überschrieben"
+      }
+    },
+    {
+      "name": "duplicate check also in Reserve",
+      "pass": true
+    },
+    {
+      "name": "gallery shows 4 thumbs (1 old + 3 new)",
+      "pass": true
+    },
+    {
+      "name": "cover/delete in editor",
+      "pass": true
+    },
+    {
+      "name": "multi-image saved; first = cover; removed image deleted from storage",
+      "pass": true,
+      "info": {
+        "bilder": [
+          "11111111-1111-1111-1111-111111111111/teile/1809fa83-a3f2-4d6c-9d3f-cd9bf64a1d1d.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/cf51788e-6ad9-4e2a-b843-977a04bfcea6.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/72331261-3ef5-4a96-8ca2-eda12dd0ae4a.jpg"
+        ],
+        "removed": [
+          "u/teile/old.jpg"
+        ]
+      }
+    },
+    {
+      "name": "detail shows all images",
+      "pass": true,
+      "info": {
+        "detailThumbs": 3
+      }
+    },
+    {
+      "name": "list uses cover + count badge",
+      "pass": true,
+      "info": {
+        "cnt": "3"
+      }
+    },
+    {
+      "name": "remove one image",
+      "pass": true
+    },
+    {
+      "name": "LEGO multi-image",
+      "pass": true,
+      "info": [
+        "11111111-1111-1111-1111-111111111111/lego/51801ce7-554c-4a42-a7a1-1286c853412c.jpg",
+        "11111111-1111-1111-1111-111111111111/lego/656a06d9-7b05-46ac-941f-b6ec869061af.jpg"
+      ]
+    },
+    {
+      "name": "LEGO Sets empty",
+      "pass": true
+    },
+    {
+      "name": "LEGO Reserve shows old",
+      "pass": true
+    },
+    {
+      "name": "LEGO duplicate overwrite number+name only",
+      "pass": true,
+      "info": {
+        "id": 31,
+        "set_nummer": "75 192",
+        "name": "Falke",
+        "art": "reserve",
+        "bilder": [],
+        "jahr": 2017,
+        "teile_anzahl": 7541,
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "set picker grouped Reserve/Sets",
+      "pass": true,
+      "info": [
+        "🏰 Reserve",
+        "🎁 Sets"
+      ]
+    },
+    {
+      "name": "tab rename applied + stored",
+      "pass": true,
+      "info": {
+        "tabTxt": [
+          "🔍Teile",
+          "📦Kisten",
+          "🏰Lager",
+          "🎁Neue Sets",
+          "📊Übersicht",
+          "👥Teilen"
+        ],
+        "row": {
+          "id": 1004,
+          "created_at": "2026-11-10T15:34:09.717Z",
+          "user_id": "11111111-1111-1111-1111-111111111111",
+          "namen": {
+            "reserve": "Lager",
+            "sets": "Neue Sets"
+          },
+          "updated_at": "2026-11-10T15:34:09.717Z"
+        }
+      }
+    },
+    {
+      "name": "tab rename persists after reload; icons stay",
+      "pass": true,
+      "info": [
+        "🔍Teile",
+        "📦Kisten",
+        "🏰Lager",
+        "🎁Neue Sets",
+        "📊Übersicht",
+        "👥Teilen"
+      ]
+    },
+    {
+      "name": "heading uses new name",
+      "pass": true
+    },
+    {
+      "name": "empty name falls back to default",
+      "pass": true,
+      "info": [
+        "🔍Teile",
+        "📦Kisten",
+        "🏰Reserve",
+        "🎁Neue Sets",
+        "📊Übersicht",
+        "👥Teilen"
+      ]
+    },
+    {
+      "name": "LEGO overview has rename button",
+      "pass": true
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "info": []
+    }
+  ]
+}

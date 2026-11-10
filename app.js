@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261106-14';
+const ASSET_V = '20261110-1';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -144,24 +144,139 @@ async function loadAll() {
   state.teile = t.data;
   state.loaded = true;
   // Bilder nachziehen – Liste kann schon erscheinen
-  loadImageUrls(state.teile).then(() => {
+  loadImageUrls([...state.teile, ...state.sets]).then(() => {
     const h = (location.hash || '').slice(1);
     // Nur Listen neu zeichnen – offene Formulare nicht verwerfen
-    if (h === 'teile' || h === 'kisten' || h === 'sets' || h === 'uebersicht') {
+    if (h === 'teile' || h === 'kisten' || h === 'sets' || h === 'reserve' || h === 'uebersicht') {
       try { route(); } catch { /* */ }
     }
   }).catch(e => console.warn(e));
 }
 
-async function loadImageUrls(teile) {
-  const paths = [...new Set(teile.map(t => t.bild_url).filter(p => p && !state.imgCache[p]))];
+// Mehrere Bilder: bilder[0] = Titelbild; ältere Einträge haben nur bild_url
+const imgList = r => (r && Array.isArray(r.bilder) && r.bilder.length) ? r.bilder.filter(Boolean) : (r && r.bild_url ? [r.bild_url] : []);
+async function loadImageUrls(rows) {
+  const paths = [...new Set((rows || []).flatMap(imgList).filter(p => p && !state.imgCache[p]))];
   if (!paths.length) return;
-  const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(paths, 60 * 60 * 12);
-  if (error) { console.warn(error); return; }
-  data.forEach(d => { if (d.signedUrl) state.imgCache[d.path] = d.signedUrl; });
+  for (let i = 0; i < paths.length; i += 500) {
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(paths.slice(i, i + 500), 60 * 60 * 12);
+    if (error) { console.warn(error); return; }
+    (data || []).forEach(d => { if (d.signedUrl) state.imgCache[d.path] = d.signedUrl; });
+  }
 }
-const imgUrl = t => t.bild_url ? state.imgCache[t.bild_url] : null;
-const thumb = t => { const u = imgUrl(t); return u ? `<img class="thumb" src="${esc(u)}" alt="" loading="lazy">` : `<div class="thumb">🧩</div>`; };
+const imgUrl = t => { const p = imgList(t)[0]; return p ? state.imgCache[p] || null : null; };
+const thumb = (t, icon = '🧩') => { const u = imgUrl(t); const n = imgList(t).length;
+  return u ? `<span class="thumbwrap"><img class="thumb" src="${esc(u)}" alt="" loading="lazy">${n > 1 ? `<span class="thumbcount">${n}</span>` : ''}</span>` : `<div class="thumb">${icon}</div>`; };
+/** Bilder-Ansicht im Detail: großes Titelbild + kleine Vorschaubilder */
+function photoStrip(row) {
+  const urls = imgList(row).map(p => state.imgCache[p]).filter(Boolean);
+  if (!urls.length) return '';
+  return `<div class="pstrip"><img class="big-photo" data-pbig src="${esc(urls[0])}" alt="">
+    ${urls.length > 1 ? `<div class="pthumbs">${urls.map((u, i) => `<img src="${esc(u)}" alt="Bild ${i + 1}" data-psrc="${esc(u)}" class="${i ? '' : 'on'}">`).join('')}</div>` : ''}</div>`;
+}
+function bindPhotoStrip(root = document) {
+  root.querySelectorAll('.pstrip').forEach(s => s.querySelectorAll('[data-psrc]').forEach(im => im.onclick = () => {
+    s.querySelector('[data-pbig]').src = im.dataset.psrc;
+    s.querySelectorAll('[data-psrc]').forEach(x => x.classList.toggle('on', x === im));
+  }));
+}
+/** Foto-Auswahl mit mehreren Bildern (hinzufügen, entfernen, Titelbild wählen) */
+function galleryHtml(id) {
+  return `<div class="gallery" id="${id}"></div>
+    <div class="row" style="margin-top:.4rem">
+      <label class="btn secondary grow" style="margin:0">📷 Foto aufnehmen<input data-gcam type="file" accept="image/*" capture="environment" hidden></label>
+      <label class="btn secondary grow" style="margin:0">🖼️ Aus Galerie<input data-ggal type="file" accept="image/*" multiple hidden></label>
+    </div>`;
+}
+function galleryEditor(id, paths) {
+  const grid = document.getElementById(id);
+  const wrap = grid.parentElement;
+  const items = (paths || []).map(p => ({ path: p, url: state.imgCache[p] || '' }));
+  const removed = [];
+  let uploaded = [];
+  const render = () => {
+    grid.innerHTML = items.map((it, i) => `<div class="gthumb${i === 0 ? ' cover' : ''}">
+      ${it.url ? `<img src="${esc(it.url)}" alt="">` : '<div class="gph">🖼️</div>'}
+      ${i === 0 ? '<span class="gcover">Titelbild</span>' : `<button type="button" class="gmk" data-cover="${i}" title="Als Titelbild">★</button>`}
+      <button type="button" class="gdel" data-del="${i}" aria-label="Bild entfernen" title="Bild entfernen">✕</button></div>`).join('')
+      || '<p class="muted" style="margin:.2rem 0">Noch kein Foto.</p>';
+  };
+  const add = files => { for (const f of files || []) items.push({ file: f, url: URL.createObjectURL(f) }); render(); };
+  wrap.querySelectorAll('[data-gcam],[data-ggal]').forEach(inp => inp.onchange = e => { add(e.target.files); e.target.value = ''; });
+  grid.onclick = e => {
+    const d = e.target.closest('[data-del]'), c = e.target.closest('[data-cover]');
+    if (d) { e.preventDefault(); const [x] = items.splice(Number(d.dataset.del), 1); if (x?.path) removed.push(x.path); render(); }
+    else if (c) { e.preventDefault(); const [x] = items.splice(Number(c.dataset.cover), 1); items.unshift(x); render(); }
+  };
+  render();
+  return {
+    items, removed, add,
+    count: () => items.length,
+    hasNew: () => items.some(x => x.file),
+    async commit(folder) {
+      const out = [];
+      for (const it of items) {
+        if (it.file) {
+          toast('Foto wird gespeichert …', 10000);
+          const blob = await shrinkImage(it.file);
+          const path = `${owner()}/${folder}/${crypto.randomUUID()}.jpg`;
+          const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
+          if (up.error) throw up.error;
+          state.imgCache[path] = it.url; it.path = path; delete it.file; uploaded.push(path);
+        }
+        if (it.path) out.push(it.path);
+      }
+      return out;
+    },
+    async cleanup() { if (removed.length) { try { await sb.storage.from(BUCKET).remove(removed.splice(0)); } catch (e) { console.warn(e); } } uploaded = []; },
+    async rollback() { if (uploaded.length) { try { await sb.storage.from(BUCKET).remove(uploaded.splice(0)); } catch (e) { console.warn(e); } } },
+  };
+}
+/** Preis kompakt für Listen: „0,76 € je Stück · 2,28 € gesamt“ */
+const priceCompact = (unit, qty) => {
+  if (unit == null || unit === '' || Number.isNaN(Number(unit))) return '';
+  const u = Number(unit), q = Number(qty) || 0;
+  return q > 1 ? `${euro(u)} je Stück · ${euro(u * q)} gesamt` : `${euro(u)} je Stück`;
+};
+const priceSubHtml = (unit, qty) => { const s = priceCompact(unit, qty); return s ? `<div class="sub price">${esc(s)}</div>` : ''; };
+
+// ---------- Reserve / Sets ----------
+const SET_ART = { reserve: { icon: '🏰', def: 'Reserve', tab: 'reserve' }, set: { icon: '🎁', def: 'Sets', tab: 'sets' } };
+const setArt = s => (s && s.art === 'set') ? 'set' : 'reserve';
+const artName = (art, lego) => tabLabel((lego ? 'l/' : '') + SET_ART[art].tab, SET_ART[art].def);
+const artIcon = art => SET_ART[art]?.icon || '🏰';
+/** Nummer vergleichen: Groß/klein, Leerzeichen und Striche egal */
+const normNr = s => String(s ?? '').toLowerCase().replace(/[\s\-‐‑–—]+/g, '').trim();
+
+// ---------- Eigene Reiter-Namen ----------
+const tabNames = { uid: null, namen: {} };
+const tabLabel = (key, def) => String(tabNames.namen?.[key] || '').trim() || def;
+async function loadTabNames() {
+  const uid = owner();
+  if (!uid || tabNames.uid === uid) return;
+  try {
+    const { data, error } = await withTimeout(sb.from('tab_namen').select('namen').eq('user_id', uid).maybeSingle(), 5000, 'timeout');
+    tabNames.namen = (!error && data && data.namen) || {};
+  } catch { tabNames.namen = {}; }
+  tabNames.uid = uid;
+}
+function tabRenameDialog(mode) {
+  const tabs = TABS[mode] || [];
+  const p = dialog(`<form><h2 style="margin-top:0">✏️ Reiter umbenennen</h2>
+    <p class="muted" style="margin-top:0">Leer lassen = Standardname.</p>
+    ${tabs.map(([h, i, l]) => `<label for="tn_${esc(h.replace('/', '_'))}">${i} ${esc(l)}</label>
+      <input id="tn_${esc(h.replace('/', '_'))}" name="${esc(h)}" maxlength="24" value="${esc(tabNames.namen?.[h] || '')}" placeholder="${esc(l)}">`).join('')}
+    <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
+  dialog.current._save = async d => {
+    const namen = { ...(tabNames.namen || {}) };
+    for (const [h] of tabs) { const v = (d.querySelector(`[name="${h}"]`).value || '').trim(); if (v) namen[h] = v; else delete namen[h]; }
+    const { error } = await sb.from('tab_namen').upsert({ user_id: state.user.id, namen, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    if (error) throw error;
+    tabNames.namen = namen; tabNames.uid = state.user.id;
+    toast('Reiter gespeichert ✔'); return true;
+  };
+  return p;
+}
 
 // ---------- Auth ----------
 function withTimeout(promise, ms, msg) {
@@ -306,9 +421,9 @@ function renderLogin() {
 
 // ---------- Router ----------
 const TABS = {
-  pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['sets', '🏰', 'Sets'], ['uebersicht', '📊', 'Übersicht'], ['teilen', '👥', 'Teilen']],
+  pm: [['teile', '🔍', 'Teile'], ['kisten', '📦', 'Kisten'], ['reserve', '🏰', 'Reserve'], ['sets', '🎁', 'Sets'], ['uebersicht', '📊', 'Übersicht'], ['teilen', '👥', 'Teilen']],
   v: [['v/liste', '🔍', 'Vorrat'], ['v/orte', '🗄️', 'Orte'], ['v/einkauf', '🛒', 'Einkauf'], ['v/uebersicht', '📊', 'Übersicht'], ['v/teilen', '👥', 'Teilen']],
-  lego: [['l/teile', '🔍', 'Teile'], ['l/kisten', '📦', 'Kisten'], ['l/sets', '🏰', 'Sets'], ['l/uebersicht', '📊', 'Übersicht'], ['l/teilen', '👥', 'Teilen']],
+  lego: [['l/teile', '🔍', 'Teile'], ['l/kisten', '📦', 'Kisten'], ['l/reserve', '🏰', 'Reserve'], ['l/sets', '🎁', 'Sets'], ['l/uebersicht', '📊', 'Übersicht'], ['l/teilen', '👥', 'Teilen']],
 };
 function setMode(mode, tab) {
   document.body.classList.toggle('mode-v', mode === 'v');
@@ -321,7 +436,9 @@ function setMode(mode, tab) {
   document.querySelectorAll('#modebar a').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
   const nav = document.getElementById('tabbar');
   const pend = pendingCount();
-  nav.innerHTML = (TABS[mode] || []).map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}${h.endsWith('teilen') && pend ? `<b class="tabbadge">${pend}</b>` : ''}</span>${l}</a>`).join('');
+  const tabs = TABS[mode] || [];
+  nav.classList.toggle('many', tabs.length > 5);
+  nav.innerHTML = tabs.map(([h, i, l]) => `<a href="#${h}" class="${h === tab ? 'active' : ''}"><span>${i}${h.endsWith('teilen') && pend ? `<b class="tabbadge">${pend}</b>` : ''}</span><em>${esc(tabLabel(h, l))}</em></a>`).join('');
   renderChrome(mode);
 }
 async function route() {
@@ -338,6 +455,7 @@ async function route() {
     if (!f || (parts[0] !== 'admin' && parts[0] !== 'bereiche' && !covers(f.bereich, section))) viewAs(null);
     else if (f.recht !== state.viewRecht || f.bereich !== state.viewBereich) Object.assign(state, { viewRecht: f.recht, viewBereich: f.bereich });
   }
+  if (parts[0] !== 'admin') await loadTabNames();
   if (parts[0] === 'v') return routeVorrat(parts[1] || 'liste', parts[2]);
   if (parts[0] === 'l') return routeLego(parts[1] || 'teile', parts[2]);
   if (parts[0] === 'c' || parts[0] === 'bereiche') return routeCustom(parts);
@@ -349,9 +467,9 @@ async function route() {
     try { await loadAll(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
   const [view, id] = parts;
-  const tab = { teil: 'teile', kiste: 'kisten', set: 'sets', etiketten: 'kisten' }[view] || view;
+  const tab = view === 'set' ? (setArt(setById(id)) === 'set' ? 'sets' : 'reserve') : ({ teil: 'teile', kiste: 'kisten', etiketten: 'kisten' }[view] || view);
   setMode('pm', tab);
-  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, sets: viewSets, set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil'), import: () => viewImport('playmobil') };
+  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, reserve: () => viewSets('reserve'), sets: () => viewSets('set'), set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil'), import: () => viewImport('playmobil') };
   (views[view] || viewTeile)(id);
 }
 window.addEventListener('hashchange', route);
@@ -373,8 +491,9 @@ function teilItem(t) {
   return `<a class="item" href="#teil/${t.id}">${thumb(t)}
     <div class="info"><div class="title">${esc(teilTitle(t))}</div>
     <div class="sub">${t.teile_nr ? 'Nr. ' + esc(t.teile_nr) + ' · ' : ''}${dot(t.farbe)}${esc(t.farbe || '')}</div>
-    <div class="sub">${k ? '📦 ' + esc(kisteLabel(k)) : ''}${sets.length ? ' · 🏰 ' + esc(sets.map(s => s.set_nummer).join(', ')) : ''}</div></div>
-    <div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`;
+    <div class="sub">${[k ? '📦 ' + esc(kisteLabel(k)) : '', ...['reserve', 'set'].map(a => { const l = sets.filter(s => setArt(s) === a); return l.length ? artIcon(a) + ' ' + esc(l.map(s => s.set_nummer).join(', ')) : ''; })].filter(Boolean).join(' · ')}</div>
+    ${priceSubHtml(t.euro, t.anzahl)}</div>
+    <div class="right"><b>${num(t.anzahl)}×</b></div></a>`;
 }
 
 function viewTeile() {
@@ -385,7 +504,7 @@ function viewTeile() {
     <div class="filters">
       <select id="fFarbe"><option value="">Alle Farben</option>${farben.map(x => `<option ${norm(x) === norm(f.farbe) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="fKiste"><option value="">Alle Kisten</option><option value="none" ${f.kiste === 'none' ? 'selected' : ''}>Ohne Kiste</option>${state.kisten.map(k => `<option value="${k.id}" ${String(k.id) === f.kiste ? 'selected' : ''}>${esc(kisteLabel(k))}</option>`).join('')}</select>
-      <select id="fSet"><option value="">Alle Sets</option>${state.sets.map(s => `<option value="${s.id}" ${String(s.id) === f.set ? 'selected' : ''}>${esc(setLabel(s))}</option>`).join('')}</select>
+      <select id="fSet"><option value="">Alle ${esc(artName('reserve'))} &amp; ${esc(artName('set'))}</option>${setOptions(state.sets, false, f.set)}</select>
     </div>
     <div class="row" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
       <a class="btn small secondary" href="#v/bon">📷 Kassenbon</a>
@@ -417,11 +536,10 @@ function viewTeil(id) {
   if (!t) { app.innerHTML = '<div class="card">Teil nicht gefunden. <a href="#teile">Zur Liste</a></div>'; return; }
   if (mode === 'bearbeiten') return teilForm(t);
   const k = kisteById(t.kiste_id);
-  const u = imgUrl(t);
   app.innerHTML = `
     <a class="back" href="javascript:history.back()">‹ Zurück</a>
     <div class="card">
-      ${u ? `<img class="big-photo" src="${esc(u)}" alt="">` : ''}
+      ${photoStrip(t)}
       <h1>${esc(teilTitle(t))}</h1>
       <dl class="dl">
         <dt>Teile-Nr.</dt><dd>${esc(t.teile_nr || '–')}</dd>
@@ -429,7 +547,7 @@ function viewTeil(id) {
         <dt>Anzahl</dt><dd>${num(t.anzahl)}</dd>
         <dt>Preis</dt><dd>${t.euro != null ? esc(priceLine(t.euro, t.anzahl)) : '–'}</dd>
         <dt>In Kiste</dt><dd>${k ? `<a href="#kiste/${k.id}">📦 ${esc(kisteLabel(k))}</a>` : '–'}</dd>
-        <dt>Sets</dt><dd>${teilSets(t).map(s => `<a class="badge" href="#set/${s.id}">${esc(setLabel(s))}</a>`).join('') || '–'}</dd>
+        <dt>${esc(artName('reserve'))} / ${esc(artName('set'))}</dt><dd>${teilSets(t).map(s => `<a class="badge" href="#set/${s.id}">${artIcon(setArt(s))} ${esc(setLabel(s))}</a>`).join('') || '–'}</dd>
         ${t.notiz ? `<dt>Notiz</dt><dd>${esc(t.notiz)}</dd>` : ''}
       </dl>
     </div>
@@ -437,11 +555,12 @@ function viewTeil(id) {
       <a class="btn grow" href="#teil/${t.id}:bearbeiten">✏️ Bearbeiten</a>
       <button class="btn danger" id="del">🗑️ Löschen</button>
     </div>`;
+  bindPhotoStrip(app);
   document.getElementById('del').onclick = async () => {
     if (!confirm('Dieses Teil wirklich löschen?')) return;
     const { error } = await sb.from('teile').delete().eq('id', t.id);
     if (error) return fail(error);
-    if (t.bild_url) await sb.storage.from(BUCKET).remove([t.bild_url]);
+    if (imgList(t).length) await sb.storage.from(BUCKET).remove(imgList(t));
     state.teile = state.teile.filter(x => x.id !== t.id);
     toast('Gelöscht.'); location.hash = '#teile';
   };
@@ -453,19 +572,13 @@ function teilForm(t) {
   const pre = new URLSearchParams(location.hash.split('?')[1] || '');
   t = t || { teile_nr: '', farbe: '', beschreibung: '', euro: null, anzahl: 1, kiste_id: pre.get('kiste') ? Number(pre.get('kiste')) : null, notiz: '', teil_sets: pre.get('set') ? [{ set_id: Number(pre.get('set')) }] : [] };
   let chosenSets = (t.teil_sets || []).map(x => x.set_id);
-  let file = null;
   const farben = [...new Set(state.teile.map(x => (x.farbe || '').trim()).filter(Boolean))];
-  const u = imgUrl(t);
   app.innerHTML = `
     <a class="back" href="javascript:history.back()">‹ Abbrechen</a>
     <h1>${isNew ? 'Neues Teil' : 'Teil bearbeiten'}</h1>
     <form id="f" class="card">
-      <label>Foto</label>
-      <img id="prev" class="photo-preview ${u ? '' : 'hidden'}" src="${esc(u || '')}" alt="">
-      <div class="row">
-        <label class="btn secondary grow" style="margin:0">📷 Foto aufnehmen<input id="cam" type="file" accept="image/*" capture="environment" hidden></label>
-        <label class="btn secondary grow" style="margin:0">🖼️ Aus Galerie<input id="gal" type="file" accept="image/*" hidden></label>
-      </div>
+      <label>Fotos</label>
+      ${galleryHtml('tgal')}
       <div class="grid2">
         <div><label for="nr">Teile-Nr.</label><input id="nr" value="${esc(t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340"></div>
         <div><label for="farbe">Farbe</label>${suggestField('farbe', t.farbe, [...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'], 'z.B. rot', 'Farbe wählen')}</div>
@@ -477,8 +590,9 @@ function teilForm(t) {
       </div>
       <label for="kiste">In Kiste / Tüte</label>
       <div class="row"><select id="kiste" class="grow" style="flex:1"></select><button type="button" class="btn small secondary" id="newKiste">＋ Neu</button></div>
-      <label>Sets</label>
-      <div class="row"><select id="setSel" style="flex:1"></select><button type="button" class="btn small secondary" id="newSet">＋ Neu</button></div>
+      <label>${esc(artName('reserve'))} / ${esc(artName('set'))}</label>
+      <select id="setSel"></select>
+      <div class="row" style="margin-top:.4rem"><button type="button" class="btn small secondary grow" id="newRes">＋ Neu in ${esc(artName('reserve'))}</button><button type="button" class="btn small secondary grow" id="newSet">＋ Neu in ${esc(artName('set'))}</button></div>
       <div id="chips" class="chips"></div>
       <label for="notiz">Notiz</label><textarea id="notiz">${esc(t.notiz)}</textarea>
       <div style="height:1rem"></div>
@@ -487,15 +601,16 @@ function teilForm(t) {
     </form>`;
   const kSel = document.getElementById('kiste'), sSel = document.getElementById('setSel');
   const fillKisten = sel => { kSel.innerHTML = `<option value="">– keine –</option>` + state.kisten.map(k => `<option value="${k.id}">${esc(kisteLabel(k))}</option>`).join(''); kSel.value = sel ?? ''; };
-  const fillSets = () => { sSel.innerHTML = `<option value="">Set hinzufügen …</option>` + state.sets.filter(s => !chosenSets.includes(s.id)).map(s => `<option value="${s.id}">${esc(setLabel(s))}</option>`).join('');
-    document.getElementById('chips').innerHTML = chosenSets.map(id => `<span class="chip">🏰 ${esc(setLabel(setById(id)))}<button type="button" data-id="${id}" aria-label="entfernen">×</button></span>`).join(''); };
+  const fillSets = () => { sSel.innerHTML = `<option value="">Zuordnen …</option>` + setOptions(state.sets.filter(s => !chosenSets.includes(s.id)), false);
+    document.getElementById('chips').innerHTML = chosenSets.map(id => { const s = setById(id); return `<span class="chip">${artIcon(setArt(s))} ${esc(setLabel(s))}<button type="button" data-id="${id}" aria-label="entfernen">×</button></span>`; }).join(''); };
+  const gal = galleryEditor('tgal', imgList(t));
   fillKisten(t.kiste_id); fillSets();
   sSel.onchange = () => { if (sSel.value) { chosenSets.push(Number(sSel.value)); fillSets(); } };
   document.getElementById('chips').onclick = e => { const id = e.target.dataset?.id; if (id) { chosenSets = chosenSets.filter(x => x !== Number(id)); fillSets(); } };
   document.getElementById('newKiste').onclick = async () => { const k = await kisteDialog(); if (k) fillKisten(k.id); };
-  document.getElementById('newSet').onclick = async () => { const s = await setDialog(); if (s) { chosenSets.push(s.id); fillSets(); } };
-  const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
-  document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const addNewSet = async art => { const s = await setDialog(null, art); if (s && !chosenSets.includes(s.id)) { chosenSets.push(s.id); } fillSets(); };
+  document.getElementById('newRes').onclick = () => addNewSet('reserve');
+  document.getElementById('newSet').onclick = () => addNewSet('set');
   bindSuggest('farbe');
   const updEurPrev = () => {
     const el = document.getElementById('eurPrev'); if (!el) return;
@@ -524,24 +639,19 @@ function teilForm(t) {
         notiz: document.getElementById('notiz').value.trim() || null,
       };
       if (row.euro != null && isNaN(row.euro)) throw new Error('Euro-Betrag ist keine Zahl.');
-      if (!row.teile_nr && !row.beschreibung && !file) throw new Error('Bitte mindestens Teile-Nr., Beschreibung oder Foto angeben.');
-      const oldPath = t.bild_url;
-      if (file) {
-        toast('Foto wird gespeichert …', 10000);
-        const blob = await shrinkImage(file);
-        const path = `${owner()}/teile/${crypto.randomUUID()}.${blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase()}`;
-        const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
-        if (up.error) throw up.error;
-        row.bild_url = path;
-      }
+      if (!row.teile_nr && !row.beschreibung && !gal.count()) throw new Error('Bitte mindestens Teile-Nr., Beschreibung oder Foto angeben.');
+      row.bilder = await gal.commit('teile');
+      row.bild_url = row.bilder[0] || null;
       let saved;
-      if (isNew) { const r = await sb.from('teile').insert({ ...row, user_id: owner() }).select().single(); if (r.error) throw r.error; saved = r.data; }
-      else { const r = await sb.from('teile').update(row).eq('id', t.id).select().single(); if (r.error) throw r.error; saved = r.data; }
+      try {
+        if (isNew) { const r = await sb.from('teile').insert({ ...row, user_id: owner() }).select().single(); if (r.error) throw r.error; saved = r.data; }
+        else { const r = await sb.from('teile').update(row).eq('id', t.id).select().single(); if (r.error) throw r.error; saved = r.data; }
+      } catch (e) { await gal.rollback(); throw e; }
       const before = (t.teil_sets || []).map(x => x.set_id);
       const add = chosenSets.filter(x => !before.includes(x)), rem = before.filter(x => !chosenSets.includes(x));
       if (add.length) { const r = await sb.from('teil_sets').insert(add.map(set_id => ({ teil_id: saved.id, set_id, user_id: owner() }))); if (r.error) throw r.error; }
       if (rem.length) { const r = await sb.from('teil_sets').delete().eq('teil_id', saved.id).in('set_id', rem); if (r.error) throw r.error; }
-      if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
+      await gal.cleanup();
       saved.teil_sets = chosenSets.map(set_id => ({ set_id }));
       await loadImageUrls([saved]);
       state.teile = isNew ? [saved, ...state.teile] : state.teile.map(x => x.id === saved.id ? saved : x);
@@ -574,11 +684,13 @@ function dialog(html) {
     const d = document.createElement('dialog'); d.innerHTML = html; document.body.appendChild(d); d.showModal();
     d.querySelector('[data-cancel]').onclick = () => { d.close(); };
     d.addEventListener('close', () => { d.remove(); resolve(d._result || null); });
-    d.querySelector('form').onsubmit = async e => { e.preventDefault(); try { d._result = await d._save(d); d.close(); } catch (err) { fail(err); } };
+    d.querySelector('form').onsubmit = async e => { e.preventDefault(); const sb_ = d.querySelector('button[type=submit]'); if (sb_) sb_.disabled = true;
+      try { const r = await d._save(d); if (r === dialog.KEEP) return; d._result = r; d.close(); } catch (err) { fail(err); } finally { if (sb_) sb_.disabled = false; } };
     d._resolve = resolve; d._ready && d._ready(d);
     dialog.current = d;
   });
 }
+dialog.KEEP = Symbol('keep');
 function kisteFields(k = {}) {
   return `<div class="grid2">
     <div><label>Art</label><select name="art"><option ${k.art !== 'Tüte' ? 'selected' : ''}>Kiste</option><option ${k.art === 'Tüte' ? 'selected' : ''}>Tüte</option></select></div>
@@ -601,18 +713,86 @@ function kisteDialog(k) {
   };
   return p;
 }
-function setDialog(s) {
-  const p = dialog(`<form><h2 style="margin-top:0">${s ? 'Set bearbeiten' : 'Neues Set'}</h2>
-    <label>Set-Nummer</label><input name="set_nummer" required value="${esc(s?.set_nummer)}" placeholder="z.B. 3666" inputmode="numeric">
-    <label>Name</label><input name="name" value="${esc(s?.name)}" placeholder="z.B. Ritterburg">
+const SETCFG = {
+  pm: { table: 'sets', lego: false, folder: 'teile', list: () => state.sets, put: l => { state.sets = l; }, href: id => '#set/' + id,
+    countTeile: s => state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id)).length },
+  lego: { table: 'lego_sets', lego: true, folder: 'lego', list: () => lstate.sets, put: l => { lstate.sets = l; }, href: id => '#l/set/' + id,
+    countTeile: s => lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)).length },
+};
+/** Auswahlliste mit zwei Gruppen (Reserve / Sets) */
+function setOptions(list, lego, selected) {
+  return ['reserve', 'set'].map(a => { const l = list.filter(s => setArt(s) === a); return l.length
+    ? `<optgroup label="${artIcon(a)} ${esc(artName(a, lego))}">${l.map(s => `<option value="${s.id}" ${String(s.id) === String(selected ?? '') ? 'selected' : ''}>${esc(setLabel(s))}</option>`).join('')}</optgroup>` : ''; }).join('');
+}
+const findDupSet = (cfg, art, nummer, exceptId) => { const n = normNr(nummer); return n ? cfg.list().find(x => x.id !== exceptId && setArt(x) === art && normNr(x.set_nummer) === n) : null; };
+/** Kachel des vorhandenen Eintrags zeigen und fragen, ob überschrieben werden soll */
+function askOverwrite(cfg, dup, row) {
+  return new Promise(resolve => {
+    const art = setArt(dup);
+    const d = document.createElement('dialog'); d.className = 'dupdlg';
+    d.innerHTML = `<h2 style="margin-top:0">Schon vorhanden – überschreiben?</h2>
+      <p style="margin-top:0">In „${esc(artName(art, cfg.lego))}“ gibt es die Nummer <b>${esc(dup.set_nummer)}</b> schon:</p>
+      <div class="list"><div class="item" data-dup>${thumb(dup, artIcon(art))}
+        <div class="info"><div class="title">${esc(dup.set_nummer)} ${esc(dup.name || '')}</div>
+        <div class="sub">${num(cfg.countTeile(dup))} Teile zugeordnet${imgList(dup).length ? ' · ' + num(imgList(dup).length) + ' Foto(s)' : ''}</div></div></div></div>
+      <p>Bei „Ja“ werden nur <b>Nummer</b> und <b>Name</b> übernommen:<br>
+        <span class="muted">${esc(dup.set_nummer)} ${esc(dup.name || '')}</span> → <b>${esc(row.set_nummer)} ${esc(row.name || dup.name || '')}</b><br>
+        <span class="muted" style="font-size:.85rem">Fotos, Notiz und zugeordnete Teile bleiben wie sie sind.</span></p>
+      <div class="row"><button class="btn grow" type="button" data-yes>Ja, überschreiben</button><button class="btn secondary grow" type="button" data-no>Nein, zurück</button></div>`;
+    document.body.appendChild(d); d.showModal();
+    let ans = false;
+    d.querySelector('[data-yes]').onclick = () => { ans = true; d.close(); };
+    d.querySelector('[data-no]').onclick = () => d.close();
+    d.addEventListener('close', () => { d.remove(); resolve(ans); });
+  });
+}
+async function overwriteSet(cfg, dup, row) {
+  const upd = { set_nummer: row.set_nummer, name: row.name || dup.name || null };
+  const r = await sb.from(cfg.table).update(upd).eq('id', dup.id).select().single();
+  if (r.error) throw r.error;
+  cfg.put(cfg.list().map(x => x.id === dup.id ? r.data : x).sort((a, b) => sortNat(a.set_nummer, b.set_nummer)));
+  toast('Nummer und Name aktualisiert ✔');
+  return r.data;
+}
+function setDialog(s, art) { return setDialogX(SETCFG.pm, s, art); }
+function setDialogX(cfg, s, art = 'reserve') {
+  art = s ? setArt(s) : (art === 'set' ? 'set' : 'reserve');
+  const nm = artName(art, cfg.lego);
+  const p = dialog(`<form><h2 style="margin-top:0">${artIcon(art)} ${s ? 'Bearbeiten' : 'Neu'} – ${esc(nm)}</h2>
+    <label>Nummer</label><input name="set_nummer" required value="${esc(s?.set_nummer)}" placeholder="${cfg.lego ? 'z.B. 75192' : 'z.B. 3666'}" autocomplete="off">
+    <label>Name</label><input name="name" value="${esc(s?.name)}" placeholder="${cfg.lego ? 'z.B. Millennium Falcon' : 'z.B. Ritterburg'}">
+    ${cfg.lego ? `<div class="grid2"><div><label>Jahr</label><input name="jahr" inputmode="numeric" value="${esc(s?.jahr ?? '')}"></div>
+      <div><label>Teile (laut Anleitung)</label><input name="teile_anzahl" inputmode="numeric" value="${esc(s?.teile_anzahl ?? '')}"></div></div>` : ''}
     <label>Notiz</label><textarea name="notiz">${esc(s?.notiz)}</textarea>
+    <label>Fotos</label>${galleryHtml('sgal')}
     <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
+  const gal = galleryEditor('sgal', imgList(s));
   dialog.current._save = async d => {
-    const row = formVals(d.querySelector('form'), ['set_nummer', 'name', 'notiz']);
-    const r = s ? await sb.from('sets').update(row).eq('id', s.id).select().single() : await sb.from('sets').insert({ ...row, user_id: owner() }).select().single();
-    if (r.error) throw r.error;
-    state.sets = (s ? state.sets.map(x => x.id === s.id ? r.data : x) : [...state.sets, r.data]).sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
-    toast('Set gespeichert ✔'); return r.data;
+    const f = d.querySelector('form');
+    const row = formVals(f, cfg.lego ? ['set_nummer', 'name', 'notiz', 'jahr', 'teile_anzahl'] : ['set_nummer', 'name', 'notiz']);
+    if (cfg.lego) for (const k of ['jahr', 'teile_anzahl']) { if (row[k] != null) { const n = parseInt(row[k], 10); if (Number.isNaN(n)) throw new Error('Bitte bei „' + (k === 'jahr' ? 'Jahr' : 'Teile') + '“ eine Zahl eingeben.'); row[k] = n; } }
+    const dup = findDupSet(cfg, art, row.set_nummer, s?.id);
+    if (dup && s) throw new Error('Diese Nummer gibt es in „' + nm + '“ schon (' + setLabel(dup) + ').');
+    if (dup) {
+      if (!(await askOverwrite(cfg, dup, row))) return dialog.KEEP;
+      const res = await overwriteSet(cfg, dup, row);
+      await gal.rollback();
+      return res;
+    }
+    row.bilder = await gal.commit(cfg.folder);
+    let r;
+    try {
+      r = s ? await sb.from(cfg.table).update(row).eq('id', s.id).select().single()
+        : await sb.from(cfg.table).insert({ ...row, art, user_id: owner() }).select().single();
+      if (r.error) throw r.error;
+    } catch (e) {
+      await gal.rollback();
+      if (String(e?.code) === '23505') throw new Error('Diese Nummer gibt es hier schon.');
+      throw e;
+    }
+    await gal.cleanup();
+    cfg.put((s ? cfg.list().map(x => x.id === s.id ? r.data : x) : [...cfg.list(), r.data]).sort((a, b) => sortNat(a.set_nummer, b.set_nummer)));
+    toast('Gespeichert ✔'); return r.data;
   };
   return p;
 }
@@ -692,41 +872,55 @@ async function viewLabels(id) {
   app.querySelectorAll('[data-skip]').forEach(cb => cb.onchange = () => cb.closest('.label').classList.toggle('skip', !cb.checked));
 }
 
-// ---------- Sets ----------
-function viewSets() {
+// ---------- Reserve & Sets ----------
+function setListItem(s, n, da, href, extra = '') {
+  const art = setArt(s);
+  return `<a class="item" href="${href}">${thumb(s, artIcon(art))}
+    <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
+    <div class="sub">${extra}${num(n)} Teile erfasst</div></div>
+    <div class="right">${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
+}
+function viewSets(art = 'reserve') {
+  const nm = artName(art);
+  const list = state.sets.filter(s => setArt(s) === art);
   app.innerHTML = `
-    <h1>🏰 Sets</h1>
-    <button class="btn block" id="ns" style="margin-bottom:.8rem">＋ Neues Set</button>
-    <div class="list">${state.sets.map(s => { const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
-      const da = teile.filter(t => t.anzahl > 0).length;
-      return `<a class="item" href="#set/${s.id}"><div class="thumb">🏰</div>
-        <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
-        <div class="sub">${num(teile.length)} Teile erfasst</div></div>
-        <div class="right"><span class="badge ${da === teile.length ? 'green' : 'red'}">${da}/${teile.length} da</span></div></a>`; }).join('') || '<div class="card center muted">Noch keine Sets angelegt.</div>'}</div>`;
-  document.getElementById('ns').onclick = async () => { const s = await setDialog(); if (s) location.hash = '#set/' + s.id; };
+    <h1>${artIcon(art)} ${esc(nm)}</h1>
+    <button class="btn block" id="ns" style="margin-bottom:.8rem">＋ Neu in ${esc(nm)}</button>
+    <div class="list">${list.map(s => { const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
+      return setListItem(s, teile.length, teile.filter(t => t.anzahl > 0).length, '#set/' + s.id); }).join('') || `<div class="card center muted">Hier ist noch nichts angelegt.</div>`}</div>`;
+  document.getElementById('ns').onclick = async () => { const s = await setDialog(null, art); if (s) location.hash = '#set/' + s.id; };
 }
 
 function viewSet(id) {
   const s = setById(id);
-  if (!s) { app.innerHTML = '<div class="card">Set nicht gefunden. <a href="#sets">Alle Sets</a></div>'; return; }
+  if (!s) { app.innerHTML = '<div class="card">Nicht gefunden. <a href="#reserve">Zur Übersicht</a></div>'; return; }
+  const art = setArt(s), back = art === 'set' ? '#sets' : '#reserve';
   const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
   const da = teile.filter(t => t.anzahl > 0), fehlt = teile.filter(t => !(t.anzahl > 0));
   const sum = sumTeile(teile);
   app.innerHTML = `
-    <a class="back" href="#sets">‹ Alle Sets</a>
+    <a class="back" href="${back}">‹ ${esc(artName(art))}</a>
     <div class="card">
-      <h1 style="margin-bottom:.3rem">🏰 ${esc(s.set_nummer)} ${esc(s.name || '')}</h1>
+      ${photoStrip(s)}
+      <h1 style="margin-bottom:.3rem">${artIcon(art)} ${esc(s.set_nummer)} ${esc(s.name || '')}</h1>
       ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
       <p><span class="badge green">${da.length} Teile vorhanden</span>${fehlt.length ? `<span class="badge red">${fehlt.length} fehlen</span>` : ''}<span class="badge">${num(sum.stueck)} Stück</span><span class="badge">${euro(sum.wert)}</span></p>
-      <div class="row"><a class="btn small" href="#teil/neu?set=${s.id}">＋ Teil zu diesem Set</a><button class="btn small secondary" id="es">✏️ Bearbeiten</button>
+      <div class="row"><a class="btn small" href="#teil/neu?set=${s.id}">＋ Teil zuordnen</a><button class="btn small secondary" id="es">✏️ Bearbeiten</button>
       ${teile.length ? '' : '<button class="btn small danger" id="ds">🗑️ Löschen</button>'}</div>
     </div>
     ${fehlt.length ? `<h2>Fehlt (Anzahl 0)</h2><div class="list">${fehlt.map(teilItem).join('')}</div>` : ''}
     <h2>Vorhanden</h2><div class="list">${da.map(teilItem).join('') || '<div class="card center muted">Noch keine Teile zugeordnet.</div>'}</div>`;
-  document.getElementById('es').onclick = async () => { if (await setDialog(s)) route(); };
+  bindPhotoStrip(app);
+  document.getElementById('es').onclick = async () => { const r = await setDialog(s); if (r) { if (r.id !== s.id) location.hash = '#set/' + r.id; else route(); } };
   const ds = document.getElementById('ds');
-  if (ds) ds.onclick = async () => { if (!confirm('Set löschen?')) return; const { error } = await sb.from('sets').delete().eq('id', s.id); if (error) return fail(error); state.sets = state.sets.filter(x => x.id !== s.id); location.hash = '#sets'; };
+  if (ds) ds.onclick = async () => { if (!confirm('Wirklich löschen?')) return; const { error } = await sb.from('sets').delete().eq('id', s.id); if (error) return fail(error);
+    if (imgList(s).length) sb.storage.from(BUCKET).remove(imgList(s)).catch(console.warn);
+    state.sets = state.sets.filter(x => x.id !== s.id); location.hash = back; };
 }
+
+/** Knopf „Reiter umbenennen“ (nur in der eigenen Sammlung) */
+const renameTabsBtn = mode => state.viewUid ? '' : `<button class="btn block secondary" id="renTabs" data-mode="${mode}">✏️ Reiter umbenennen</button>`;
+function bindRenameTabs() { const b = document.getElementById('renTabs'); if (b) b.onclick = async () => { if (await tabRenameDialog(b.dataset.mode)) route(); }; }
 
 // ---------- Übersicht & CSV ----------
 function viewStats() {
@@ -740,7 +934,8 @@ function viewStats() {
       <div class="stat"><b>${num(s.stueck)}</b>Stück insgesamt</div>
       <div class="stat"><b>${euro(s.wert)}</b>Gesamtwert</div>
       <div class="stat"><b>${num(state.kisten.length)}</b>Kisten & Tüten</div>
-      <div class="stat"><b>${num(state.sets.length)}</b>Sets</div>
+      <div class="stat"><b>${num(state.sets.filter(x => setArt(x) === 'reserve').length)}</b>${esc(artName('reserve'))}</div>
+      <div class="stat"><b>${num(state.sets.filter(x => setArt(x) === 'set').length)}</b>${esc(artName('set'))}</div>
       <div class="stat"><b>${num(ohneKiste)}</b>Teile ohne Kiste</div>
     </div>
     ${topK.length ? `<h2>Wertvollste Kisten</h2><div class="list">${topK.map(x => `<a class="item" href="#kiste/${x.k.id}"><div class="thumb">📦</div><div class="info"><div class="title">${esc(kisteLabel(x.k))}</div><div class="sub">${num(x.stueck)} Stück</div></div><div class="right">${euro(x.wert)}</div></a>`).join('')}</div>` : ''}
@@ -748,8 +943,10 @@ function viewStats() {
     <div class="card"><a class="btn block secondary" href="#import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
       <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button></div>
+    ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('pm')}</div>`}
     <p class="muted center" style="font-size:.85rem">Angemeldet als ${esc(state.user.email)}</p>`;
   document.getElementById('csv').onclick = exportCsv;
+  bindRenameTabs();
 }
 
 function exportCsv() {

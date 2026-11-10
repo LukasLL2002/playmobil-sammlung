@@ -21,24 +21,28 @@ async function loadLego() {
   lstate.sets = s.data.sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
   lstate.teile = t.data;
   lstate.loaded = true;
-  loadImageUrls(lstate.teile).then(() => {
+  loadImageUrls([...lstate.teile, ...lstate.sets]).then(() => {
     const h = (location.hash || '').slice(1);
-    if (h === 'l/teile' || h === 'l/kisten' || h === 'l/sets' || h === 'l/uebersicht') {
+    if (h === 'l/teile' || h === 'l/kisten' || h === 'l/sets' || h === 'l/reserve' || h === 'l/uebersicht') {
       try { route(); } catch { /* */ }
     }
   }).catch(e => console.warn(e));
 }
 
 async function routeLego(view, id) {
-  const tab = { teil: 'l/teile', kiste: 'l/kisten', set: 'l/sets', import: 'l/uebersicht', rebrickable: 'l/sets' }[view] || 'l/' + view;
-  setMode('lego', tab);
   if (!lstate.loaded) {
+    setMode('lego', '');
     app.innerHTML = '<div class="center muted" style="padding:3rem">LEGO-Sammlung wird geladen …</div>';
     try { await loadLego(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden.</div>'; return; }
   }
+  const rbArt = new URLSearchParams(location.hash.split('?')[1] || '').get('art') === 'set' ? 'set' : 'reserve';
+  const tab = view === 'set' ? (setArt(lsetById(id)) === 'set' ? 'l/sets' : 'l/reserve')
+    : view === 'rebrickable' ? (rbArt === 'set' ? 'l/sets' : 'l/reserve')
+      : ({ teil: 'l/teile', kiste: 'l/kisten', import: 'l/uebersicht' }[view] || 'l/' + view);
+  setMode('lego', tab);
   const views = {
-    teile: lTeile, teil: lTeil, kisten: lKisten, kiste: lKiste, sets: lSets, set: lSet,
-    uebersicht: lStats, teilen: () => viewTeilen('lego'), import: () => viewImport('lego'), rebrickable: lRebrickable,
+    teile: lTeile, teil: lTeil, kisten: lKisten, kiste: lKiste, reserve: () => lSets('reserve'), sets: () => lSets('set'), set: lSet,
+    uebersicht: lStats, teilen: () => viewTeilen('lego'), import: () => viewImport('lego'), rebrickable: () => lRebrickable(rbArt),
   };
   (views[view] || lTeile)(id);
 }
@@ -60,7 +64,7 @@ function lTeile() {
     <div class="filters">
       <select id="fFarbe"><option value="">Alle Farben</option>${farben.map(x => `<option ${x === f.farbe ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="fKiste"><option value="">Alle Kisten</option><option value="none" ${f.kiste === 'none' ? 'selected' : ''}>Ohne Kiste</option>${lstate.kisten.map(k => `<option value="${k.id}" ${String(k.id) === f.kiste ? 'selected' : ''}>${esc(lkisteLabel(k))}</option>`).join('')}</select>
-      <select id="fSet"><option value="">Alle Sets</option>${lstate.sets.map(s => `<option value="${s.id}" ${String(s.id) === f.set ? 'selected' : ''}>${esc(lsetLabel(s))}</option>`).join('')}</select>
+      <select id="fSet"><option value="">Alle ${esc(artName('reserve', true))} &amp; ${esc(artName('set', true))}</option>${setOptions(lstate.sets, true, f.set)}</select>
     </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
@@ -74,8 +78,9 @@ function lTeile() {
       return `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}
         <div class="info"><div class="title">${esc(lteilTitle(t))}</div>
         <div class="sub">${t.teile_nr ? esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}${k ? ' · 📦 ' + esc(lkisteLabel(k)) : ''}</div>
-        <div class="sub">${lteilSets(t).map(s => '🏰 ' + esc(lsetLabel(s))).join(' · ')}</div></div>
-        <div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`;
+        <div class="sub">${lteilSets(t).map(s => artIcon(setArt(s)) + ' ' + esc(lsetLabel(s))).join(' · ')}</div>
+        ${priceSubHtml(t.euro, t.anzahl)}</div>
+        <div class="right"><b>${num(t.anzahl)}×</b></div></a>`;
     }).join('') || (lstate.teile.length ? '<div class="card center muted">Nichts gefunden.</div>'
       : '<div class="card center"><p>Noch keine LEGO-Teile.</p><a class="btn" href="#l/teil/neu" style="background:#f9a825;color:#111">＋ Erstes Teil</a><div style="height:.5rem"></div><a class="btn secondary" href="#l/import">📥 Importieren</a></div>');
   };
@@ -95,28 +100,28 @@ function lTeil(id) {
     // detail view
   }
   if (!isNew && !String(id).endsWith(':bearbeiten') && id !== 'neu') {
-    const sets = lteilSets(t); const k = lkisteById(t.kiste_id); const u = imgUrl(t);
+    const sets = lteilSets(t); const k = lkisteById(t.kiste_id);
     app.innerHTML = `
       <a class="back" href="#l/teile">‹ Alle Teile</a>
-      <div class="card">${u ? `<img class="photo" src="${esc(u)}" alt="">` : ''}<h1 style="margin-top:.4rem">${esc(lteilTitle(t))}</h1>
+      <div class="card">${photoStrip(t)}<h1 style="margin-top:.4rem">${esc(lteilTitle(t))}</h1>
         <p>${t.teile_nr ? '<b>Nr.</b> ' + esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}</p>
         <p>${k ? '📦 <a href="#l/kiste/' + k.id + '">' + esc(lkisteLabel(k)) + '</a>' : 'Ohne Kiste'} · <b>${num(t.anzahl)}×</b></p>
         ${t.euro != null ? `<p class="price">${esc(priceLine(t.euro, t.anzahl))}</p>` : ''}
-        ${sets.length ? `<p>${sets.map(s => `<a class="badge" href="#l/set/${s.id}">🏰 ${esc(lsetLabel(s))}</a>`).join(' ')}</p>` : ''}
+        ${sets.length ? `<p>${sets.map(s => `<a class="badge" href="#l/set/${s.id}">${artIcon(setArt(s))} ${esc(lsetLabel(s))}</a>`).join(' ')}</p>` : ''}
         ${t.notiz ? `<p class="muted">${esc(t.notiz)}</p>` : ''}
         <div class="row"><a class="btn grow" href="#l/teil/${t.id}:bearbeiten">✏️ Bearbeiten</a>
           <button class="btn danger grow" id="del">🗑️ Löschen</button></div></div>`;
+    bindPhotoStrip(app);
     document.getElementById('del').onclick = async () => {
       if (!confirm('Teil löschen?')) return;
-      if (t.bild_url) await sb.storage.from(BUCKET).remove([t.bild_url]);
       const { error } = await sb.from('lego_teile').delete().eq('id', t.id); if (error) return fail(error);
+      if (imgList(t).length) await sb.storage.from(BUCKET).remove(imgList(t));
       lstate.teile = lstate.teile.filter(x => x.id !== t.id); toast('Gelöscht.'); location.hash = '#l/teile';
     };
     return;
   }
   t = t || { teile_nr: '', farbe: '', beschreibung: '', anzahl: 1, euro: null, kiste_id: null, notiz: '' };
-  let file = null, chosenSets = (t.lego_teil_sets || []).map(x => x.set_id);
-  const u = imgUrl(t);
+  let chosenSets = (t.lego_teil_sets || []).map(x => x.set_id);
   app.innerHTML = `
     <a class="back" href="${isNew ? '#l/teile' : '#l/teil/' + t.id}">‹ Zurück</a>
     <h1>${isNew ? 'Neues LEGO-Teil' : 'LEGO-Teil bearbeiten'}</h1>
@@ -127,18 +132,17 @@ function lTeil(id) {
       <div class="grid2"><div><label>Anzahl</label><input id="anz" inputmode="numeric" value="${t.anzahl ?? 1}"></div>
         <div><label>Einzelpreis (€ / Stück)</label><input id="euro" inputmode="decimal" value="${t.euro != null ? String(t.euro).replace('.', ',') : ''}"><div id="eurPrev" class="muted" style="font-size:.85rem;margin-top:.25rem"></div></div></div>
       <label>Kiste</label><div class="row"><select id="kiste" style="flex:1"></select><button type="button" class="btn small secondary" id="nk">＋</button></div>
-      <label>Sets</label><div id="setTags" class="row" style="flex-wrap:wrap"></div><select id="addSet"></select>
-      <label>Foto</label><img id="prev" class="photo-preview ${u ? '' : 'hidden'}" src="${esc(u || '')}">
-      <div class="row"><label class="btn secondary grow">📷<input id="cam" type="file" accept="image/*" capture="environment" hidden></label>
-        <label class="btn secondary grow">🖼️<input id="gal" type="file" accept="image/*" hidden></label></div>
+      <label>${esc(artName('reserve', true))} / ${esc(artName('set', true))}</label><div id="setTags" class="row" style="flex-wrap:wrap"></div><select id="addSet"></select>
+      <div class="row" style="margin-top:.4rem"><button type="button" class="btn small secondary grow" id="newRes">＋ Neu in ${esc(artName('reserve', true))}</button><button type="button" class="btn small secondary grow" id="newSet">＋ Neu in ${esc(artName('set', true))}</button></div>
+      <label>Fotos</label>${galleryHtml('lgal')}
       <label>Notiz</label><textarea id="notiz">${esc(t.notiz)}</textarea>
       <div style="height:1rem"></div><button class="btn block" style="background:#f9a825;color:#111">💾 Speichern</button>
     </form>`;
   const kSel = document.getElementById('kiste'), sSel = document.getElementById('addSet');
   const fillK = sel => { kSel.innerHTML = '<option value="">– keine –</option>' + lstate.kisten.map(k => `<option value="${k.id}">${esc(lkisteLabel(k))}</option>`).join(''); kSel.value = sel ?? ''; };
-  const fillS = () => { sSel.innerHTML = '<option value="">Set hinzufügen …</option>' + lstate.sets.filter(s => !chosenSets.includes(s.id)).map(s => `<option value="${s.id}">${esc(lsetLabel(s))}</option>`).join(''); };
+  const fillS = () => { sSel.innerHTML = '<option value="">Zuordnen …</option>' + setOptions(lstate.sets.filter(s => !chosenSets.includes(s.id)), true); };
   const renderTags = () => {
-    document.getElementById('setTags').innerHTML = chosenSets.map(id => { const s = lsetById(id); return `<span class="badge">${esc(lsetLabel(s))} <button type="button" data-x="${id}">×</button></span>`; }).join('');
+    document.getElementById('setTags').innerHTML = chosenSets.map(id => { const s = lsetById(id); return `<span class="badge">${artIcon(setArt(s))} ${esc(lsetLabel(s))} <button type="button" data-x="${id}">×</button></span>`; }).join('');
     document.getElementById('setTags').querySelectorAll('button').forEach(b => b.onclick = () => { chosenSets = chosenSets.filter(x => x !== Number(b.dataset.x)); renderTags(); fillS(); });
   };
   fillK(t.kiste_id); fillS(); renderTags();
@@ -148,8 +152,10 @@ function lTeil(id) {
     const { data, error } = await sb.from('lego_kisten').insert({ nummer, art: 'Kiste', user_id: owner() }).select().single();
     if (error) return fail(error); lstate.kisten = [...lstate.kisten, data].sort((a, b) => sortNat(a.nummer, b.nummer)); fillK(data.id);
   };
-  const onFile = e => { file = e.target.files[0]; if (file) { const p = document.getElementById('prev'); p.src = URL.createObjectURL(file); p.classList.remove('hidden'); } };
-  document.getElementById('cam').onchange = onFile; document.getElementById('gal').onchange = onFile;
+  const gal = galleryEditor('lgal', imgList(t));
+  const addNewSet = async art => { const s = await setDialogX(SETCFG.lego, null, art); if (s && !chosenSets.includes(s.id)) chosenSets.push(s.id); renderTags(); fillS(); };
+  document.getElementById('newRes').onclick = () => addNewSet('reserve');
+  document.getElementById('newSet').onclick = () => addNewSet('set');
   const updEurPrev = () => {
     const el = document.getElementById('eurPrev'); if (!el) return;
     try {
@@ -173,21 +179,17 @@ function lTeil(id) {
         kiste_id: document.getElementById('kiste').value ? Number(document.getElementById('kiste').value) : null,
         notiz: document.getElementById('notiz').value.trim() || null,
       };
-      if (!row.teile_nr && !row.beschreibung && !file) throw new Error('Bitte Nr., Beschreibung oder Foto angeben.');
-      let oldPath = t.bild_url;
-      if (file) {
-        const blob = file; const path = `${owner()}/lego/${crypto.randomUUID()}.jpg`;
-        const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg' });
-        if (up.error) throw up.error; row.bild_url = path;
-      }
+      if (!row.teile_nr && !row.beschreibung && !gal.count()) throw new Error('Bitte Nr., Beschreibung oder Foto angeben.');
+      row.bilder = await gal.commit('lego');
+      row.bild_url = row.bilder[0] || null;
       const r = isNew ? await sb.from('lego_teile').insert({ ...row, user_id: owner() }).select().single()
         : await sb.from('lego_teile').update(row).eq('id', t.id).select().single();
-      if (r.error) throw r.error;
-      if (file && oldPath) await sb.storage.from(BUCKET).remove([oldPath]);
+      if (r.error) { await gal.rollback(); throw r.error; }
+      await gal.cleanup();
       await sb.from('lego_teil_sets').delete().eq('teil_id', r.data.id);
       if (chosenSets.length) await sb.from('lego_teil_sets').insert(chosenSets.map(set_id => ({ teil_id: r.data.id, set_id, user_id: owner() })));
       const { data: full } = await sb.from('lego_teile').select('*, lego_teil_sets(set_id)').eq('id', r.data.id).single();
-      if (full?.bild_url) await loadImageUrls([full]);
+      if (imgList(full).length) await loadImageUrls([full]);
       lstate.teile = isNew ? [full, ...lstate.teile] : lstate.teile.map(x => x.id === full.id ? full : x);
       toast('Gespeichert.'); location.hash = '#l/teil/' + full.id;
     } catch (err) { fail(err); }
@@ -218,7 +220,7 @@ function lKiste(id) {
       <p class="muted">${k.ort ? '📍 ' + esc(k.ort) : ''} · ${num(teile.length)} Teile</p>
       <div class="row"><button class="btn small secondary" id="ek">✏️</button><button class="btn small danger" id="dk">🗑️</button></div></div>
     <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div>
-      <div class="sub">${t.teile_nr || ''} ${t.farbe ? '· ' + esc(t.farbe) : ''}</div></div><div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
+      <div class="sub">${t.teile_nr || ''} ${t.farbe ? '· ' + esc(t.farbe) : ''}</div>${priceSubHtml(t.euro, t.anzahl)}</div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
     <a class="fab" href="#l/teil/neu" style="background:#f9a825;color:#111">＋</a>`;
   document.getElementById('ek').onclick = async () => {
     const name = prompt('Name', k.name || ''); if (name == null) return;
@@ -233,41 +235,38 @@ function lKiste(id) {
     lstate.kisten = lstate.kisten.filter(x => x.id !== k.id); location.hash = '#l/kisten';
   };
 }
-function lSets() {
-  app.innerHTML = `<h1>🏰 LEGO-Sets</h1>
-    <p><a class="btn secondary small" href="#l/rebrickable">🔎 Set bei Rebrickable suchen</a></p>
-    <div class="list">${lstate.sets.map(s => {
-      const n = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)).length;
-      return `<a class="card item" href="#l/set/${s.id}"><div class="info"><div class="title">${esc(lsetLabel(s))}</div>
-        <div class="sub">${s.jahr ? s.jahr + ' · ' : ''}${s.teile_anzahl ? num(s.teile_anzahl) + ' Teile (offiziell)' : ''}</div></div>
-        <div class="right"><b>${num(n)}</b><small>bei dir</small></div></a>`;
-    }).join('') || '<div class="card center muted">Noch keine Sets. <a href="#l/rebrickable">Via Rebrickable anlegen</a> oder manuell.</div>'}
-    </div><button class="fab" id="ns" style="background:#f9a825;color:#111">＋</button>`;
-  document.getElementById('ns').onclick = async () => {
-    const set_nummer = prompt('Set-Nummer (z.B. 75192):'); if (!set_nummer) return;
-    const name = prompt('Name (optional):') || null;
-    const { data, error } = await sb.from('lego_sets').insert({ set_nummer, name, user_id: owner() }).select().single();
-    if (error) return fail(error); lstate.sets = [...lstate.sets, data].sort((a, b) => sortNat(a.set_nummer, b.set_nummer)); location.hash = '#l/set/' + data.id;
-  };
+function lSets(art = 'reserve') {
+  const nm = artName(art, true);
+  const list = lstate.sets.filter(s => setArt(s) === art);
+  app.innerHTML = `<h1>${artIcon(art)} LEGO – ${esc(nm)}</h1>
+    <div class="row" style="margin-bottom:.8rem"><button class="btn grow" id="ns" style="background:#f9a825;color:#111">＋ Neu in ${esc(nm)}</button>
+      <a class="btn secondary" href="#l/rebrickable?art=${art}">🔎 Bei Rebrickable suchen</a></div>
+    <div class="list">${list.map(s => {
+      const n = SETCFG.lego.countTeile(s);
+      const extra = `${s.jahr ? s.jahr + ' · ' : ''}${s.teile_anzahl ? num(s.teile_anzahl) + ' Teile laut Anleitung · ' : ''}`;
+      return setListItem(s, n, null, '#l/set/' + s.id, extra);
+    }).join('') || '<div class="card center muted">Hier ist noch nichts angelegt.</div>'}
+    </div>`;
+  document.getElementById('ns').onclick = async () => { const s = await setDialogX(SETCFG.lego, null, art); if (s) location.hash = '#l/set/' + s.id; };
 }
 function lSet(id) {
   const s = lsetById(id);
-  if (!s) { app.innerHTML = '<div class="card">Set nicht gefunden.</div>'; return; }
+  if (!s) { app.innerHTML = '<div class="card">Nicht gefunden. <a href="#l/reserve">Zur Übersicht</a></div>'; return; }
+  const art = setArt(s), back = art === 'set' ? '#l/sets' : '#l/reserve';
   const teile = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id));
-  app.innerHTML = `<a class="back" href="#l/sets">‹ Alle Sets</a>
-    <div class="card"><h1>🏰 ${esc(lsetLabel(s))}</h1>
-      <p class="muted">${s.jahr || ''}${s.teile_anzahl ? ' · ' + num(s.teile_anzahl) + ' Teile offiziell' : ''}</p>
-      <div class="row"><button class="btn small secondary" id="es">✏️</button><button class="btn small danger" id="ds">🗑️</button></div></div>
-    <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div></div><div class="right"><b>${num(t.anzahl)}×</b>${priceLineHtml(t.euro, t.anzahl)}</div></a>`).join('') || '<div class="card center muted">Keine Teile verknüpft.</div>'}</div>`;
-  document.getElementById('es').onclick = async () => {
-    const name = prompt('Name', s.name || ''); if (name == null) return;
-    const { data, error } = await sb.from('lego_sets').update({ name: name || null }).eq('id', s.id).select().single();
-    if (error) return fail(error); Object.assign(s, data); lSet(id);
-  };
+  app.innerHTML = `<a class="back" href="${back}">‹ ${esc(artName(art, true))}</a>
+    <div class="card">${photoStrip(s)}<h1>${artIcon(art)} ${esc(lsetLabel(s))}</h1>
+      <p class="muted">${s.jahr || ''}${s.teile_anzahl ? ' · ' + num(s.teile_anzahl) + ' Teile laut Anleitung' : ''}</p>
+      ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
+      <div class="row"><button class="btn small secondary" id="es">✏️ Bearbeiten</button><button class="btn small danger" id="ds">🗑️ Löschen</button></div></div>
+    <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div>${priceSubHtml(t.euro, t.anzahl)}</div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Keine Teile verknüpft.</div>'}</div>`;
+  bindPhotoStrip(app);
+  document.getElementById('es').onclick = async () => { const r = await setDialogX(SETCFG.lego, s); if (r) { if (r.id !== s.id) location.hash = '#l/set/' + r.id; else lSet(r.id); } };
   document.getElementById('ds').onclick = async () => {
-    if (!confirm('Set löschen (Teile bleiben)?')) return;
+    if (!confirm('Wirklich löschen? Die Teile bleiben erhalten.')) return;
     const { error } = await sb.from('lego_sets').delete().eq('id', s.id); if (error) return fail(error);
-    lstate.sets = lstate.sets.filter(x => x.id !== s.id); location.hash = '#l/sets';
+    if (imgList(s).length) sb.storage.from(BUCKET).remove(imgList(s)).catch(console.warn);
+    lstate.sets = lstate.sets.filter(x => x.id !== s.id); location.hash = back;
   };
 }
 function lStats() {
@@ -277,13 +276,16 @@ function lStats() {
     <div class="stats"><div class="stat"><b>${num(lstate.teile.length)}</b>Teile-Arten</div>
       <div class="stat"><b>${num(st)}</b>Stück</div>
       <div class="stat"><b>${num(lstate.kisten.length)}</b>Kisten</div>
-      <div class="stat"><b>${num(lstate.sets.length)}</b>Sets</div>
+      <div class="stat"><b>${num(lstate.sets.filter(x => setArt(x) === 'reserve').length)}</b>${esc(artName('reserve', true))}</div>
+      <div class="stat"><b>${num(lstate.sets.filter(x => setArt(x) === 'set').length)}</b>${esc(artName('set', true))}</div>
       <div class="stat"><b>${euro(wert)}</b>Wert</div></div>
     <div class="card"><a class="btn block secondary" href="#l/import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
       <button class="btn block secondary" id="exp">📤 Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
-      <a class="btn block secondary" href="#l/rebrickable">🔑 Rebrickable-Einstellungen</a></div>`;
+      <a class="btn block secondary" href="#l/rebrickable">🔑 Rebrickable-Einstellungen</a></div>
+    ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('lego')}</div>`}`;
+  bindRenameTabs();
   document.getElementById('exp').onclick = () => {
     const head = ['teile_nr', 'farbe', 'beschreibung', 'anzahl', 'euro', 'kiste_nummer', 'kiste_art', 'set_nummern', 'notiz'];
     const rows = lstate.teile.map(t => {
@@ -296,10 +298,12 @@ function lStats() {
   };
 }
 
-async function lRebrickable() {
+async function lRebrickable(art = 'reserve') {
+  const nm = artName(art, true);
   app.innerHTML = `
-    <a class="back" href="#l/sets">‹ Sets</a>
+    <a class="back" href="#l/${art === 'set' ? 'sets' : 'reserve'}">‹ ${esc(nm)}</a>
     <h1>🔎 Rebrickable</h1>
+    <p class="muted" style="margin-top:0">Übernommene Sets landen in „${artIcon(art)} ${esc(nm)}“.</p>
     <div class="card">
       <p class="muted" style="margin-top:0">Sets bei Rebrickable suchen. Dafür brauchst du einen <b>eigenen kostenlosen Zugangsschlüssel</b> von
         <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com</a>. Der Schlüssel bleibt nur auf diesem Gerät – wir speichern keinen für dich.</p>
@@ -332,10 +336,15 @@ async function lRebrickable() {
         <button class="btn small" data-num="${esc(s.set_num)}" data-name="${esc(s.name)}" data-year="${s.year || ''}" data-parts="${s.num_parts || ''}">＋ Übernehmen</button>
       </div>`).join('');
       res.querySelectorAll('button[data-num]').forEach(b => b.onclick = async () => {
-        const existing = lstate.sets.find(x => String(x.set_nummer) === b.dataset.num);
-        if (existing) { toast('Set gibt es schon.'); location.hash = '#l/set/' + existing.id; return; }
+        const row = { set_nummer: b.dataset.num, name: b.dataset.name || null };
+        const existing = findDupSet(SETCFG.lego, art, row.set_nummer);
+        if (existing) {
+          if (!(await askOverwrite(SETCFG.lego, existing, row))) return;
+          try { const u = await overwriteSet(SETCFG.lego, existing, row); location.hash = '#l/set/' + u.id; } catch (e) { fail(e); }
+          return;
+        }
         const { data: saved, error } = await sb.from('lego_sets').insert({
-          set_nummer: b.dataset.num, name: b.dataset.name, jahr: b.dataset.year ? Number(b.dataset.year) : null,
+          ...row, art, jahr: b.dataset.year ? Number(b.dataset.year) : null,
           teile_anzahl: b.dataset.parts ? Number(b.dataset.parts) : null, user_id: owner(),
         }).select().single();
         if (error) return fail(error);
