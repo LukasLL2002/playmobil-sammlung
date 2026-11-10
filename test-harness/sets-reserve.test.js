@@ -23,6 +23,16 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const overflow = async () => page.evaluate(() => [...document.querySelectorAll('.item .title, .item .sub, .item .right, .item .info')].filter(e => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis').map(e => e.className + ': ' + e.textContent.slice(0, 40)));
   const checks = { teile: '#teile', kiste: '#kiste/21', reserve: '#reserve', reserveDetail: '#set/2', legoTeile: '#l/teile', legoKiste: '#l/kiste/51', legoReserve: '#l/reserve' };
   for (const [n, h] of Object.entries(checks)) { await go(h); await page.waitForTimeout(250); const bad = await overflow(); const items = await page.locator('.item').count(); ok('no truncation @390px: ' + n, items > 0 && bad.length === 0, { items, bad }); }
+  // Reserve-Fotos (Bug t53u): Reserve ohne eigenes Foto zeigt Foto eines zugeordneten Teils
+  await page.goto('http://localhost:8765/index.html#set/2'); await page.reload(); await page.waitForSelector('h1'); await page.waitForTimeout(900);
+  const detailImgs = await page.locator('.pstrip img[data-pbig]').count();
+  ok('Reserve detail (direct open) shows part photos', detailImgs === 1 && (await page.textContent('main')).includes('Fotos der Teile'), { detailImgs });
+  const partThumbs = await page.locator('.list .item img.thumb').count();
+  ok('Reserve detail part tiles show photos', partThumbs >= 1, { partThumbs });
+  await go('#reserve'); await page.waitForTimeout(500);
+  const tiles = await page.$$eval('.list .item', as => as.map(a => ({ href: a.getAttribute('href'), img: !!a.querySelector('img.thumb') })));
+  ok('Reserve list tiles show cover from parts', tiles.find(x => x.href === '#set/2')?.img === true && tiles.find(x => x.href === '#set/1')?.img === false, tiles);
+  await page.screenshot({ path: path.join(__dirname, 'reserve-photos-390.png') });
   await go('#teile');
   const priceTxt = await page.locator('#list .item .sub.price').first().textContent();
   ok('compact price line', /je Stück · .*gesamt/.test(priceTxt), priceTxt);
@@ -83,7 +93,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await page.screenshot({ path: path.join(__dirname, 'gallery-editor-390.png') });
   await page.click('#save'); await page.waitForTimeout(900);
   d = await db(); const t12 = d.teile.find(t => t.id === 12);
-  ok('multi-image saved; first = cover; removed image deleted from storage', t12.bilder.length === 3 && t12.bild_url === t12.bilder[0] && !t12.bilder.includes('u/teile/old.jpg') && d.removed.includes('u/teile/old.jpg') && t12.bilder.every(p => p.startsWith(window_U = d.sets[0].user_id)),
+  ok('multi-image saved; first = cover; removed image deleted from storage', t12.bilder.length === 3 && t12.bild_url === t12.bilder[0] && !t12.bilder.includes('11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg') && d.removed.includes('11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg') && t12.bilder.every(p => p.startsWith(window_U = d.sets[0].user_id)),
     { bilder: t12.bilder, removed: d.removed });
   const detailThumbs = await page.locator('.pstrip .pthumbs img').count();
   ok('detail shows all images', detailThumbs === 3, { detailThumbs });
@@ -96,7 +106,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
 
   // LEGO: mehrere Bilder + Duplikat
   await go('#l/teil/41:bearbeiten'); await page.setInputFiles('[data-ggal]', ['/tmp/img-red.png', '/tmp/img-green.png']);
-  await page.click('#f button:not([type=button])'); await page.waitForTimeout(800);
+  await page.click('#f button:not([type=button])'); await page.waitForTimeout(1500);
   d = await db(); const l41 = d.lego_teile.find(t => t.id === 41);
   ok('LEGO multi-image', l41.bilder.length === 2 && l41.bild_url === l41.bilder[0] && l41.bilder[0].includes('/lego/'), l41.bilder);
   await go('#l/sets'); ok('LEGO Sets empty', (await page.locator('.list .item').count()) === 0);

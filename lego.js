@@ -23,7 +23,7 @@ async function loadLego() {
   lstate.loaded = true;
   loadImageUrls([...lstate.teile, ...lstate.sets]).then(() => {
     const h = (location.hash || '').slice(1);
-    if (h === 'l/teile' || h === 'l/kisten' || h === 'l/sets' || h === 'l/reserve' || h === 'l/uebersicht') {
+    if (h === 'l/teile' || h === 'l/kisten' || h === 'l/sets' || h === 'l/reserve' || h === 'l/uebersicht' || /^l\/(set|kiste|teil)\/\d+$/.test(h)) {
       try { route(); } catch { /* */ }
     }
   }).catch(e => console.warn(e));
@@ -242,9 +242,9 @@ function lSets(art = 'reserve') {
     <div class="row" style="margin-bottom:.8rem"><button class="btn grow" id="ns" style="background:#f9a825;color:#111">＋ Neu in ${esc(nm)}</button>
       <a class="btn secondary" href="#l/rebrickable?art=${art}">🔎 Bei Rebrickable suchen</a></div>
     <div class="list">${list.map(s => {
-      const n = SETCFG.lego.countTeile(s);
+      const teile = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)); const n = teile.length;
       const extra = `${s.jahr ? s.jahr + ' · ' : ''}${s.teile_anzahl ? num(s.teile_anzahl) + ' Teile laut Anleitung · ' : ''}`;
-      return setListItem(s, n, null, '#l/set/' + s.id, extra);
+      return setListItem(s, n, null, '#l/set/' + s.id, extra, teile);
     }).join('') || '<div class="card center muted">Hier ist noch nichts angelegt.</div>'}
     </div>`;
   document.getElementById('ns').onclick = async () => { const s = await setDialogX(SETCFG.lego, null, art); if (s) location.hash = '#l/set/' + s.id; };
@@ -255,7 +255,7 @@ function lSet(id) {
   const art = setArt(s), back = art === 'set' ? '#l/sets' : '#l/reserve';
   const teile = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id));
   app.innerHTML = `<a class="back" href="${back}">‹ ${esc(artName(art, true))}</a>
-    <div class="card">${photoStrip(s)}<h1>${artIcon(art)} ${esc(lsetLabel(s))}</h1>
+    <div class="card">${setPhotos(s, teile)}<h1>${artIcon(art)} ${esc(lsetLabel(s))}</h1>
       <p class="muted">${s.jahr || ''}${s.teile_anzahl ? ' · ' + num(s.teile_anzahl) + ' Teile laut Anleitung' : ''}</p>
       ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
       <div class="row"><button class="btn small secondary" id="es">✏️ Bearbeiten</button><button class="btn small danger" id="ds">🗑️ Löschen</button></div></div>

@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261110-1';
+const ASSET_V = '20261110-2';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -147,7 +147,7 @@ async function loadAll() {
   loadImageUrls([...state.teile, ...state.sets]).then(() => {
     const h = (location.hash || '').slice(1);
     // Nur Listen neu zeichnen – offene Formulare nicht verwerfen
-    if (h === 'teile' || h === 'kisten' || h === 'sets' || h === 'reserve' || h === 'uebersicht') {
+    if (h === 'teile' || h === 'kisten' || h === 'sets' || h === 'reserve' || h === 'uebersicht' || /^(set|kiste)\/\d+$/.test(h) || /^teil\/\d+$/.test(h)) {
       try { route(); } catch { /* */ }
     }
   }).catch(e => console.warn(e));
@@ -873,9 +873,17 @@ async function viewLabels(id) {
 }
 
 // ---------- Reserve & Sets ----------
-function setListItem(s, n, da, href, extra = '') {
+/** Ohne eigenes Foto: Titelbild aus den zugeordneten Teilen nehmen */
+const setCoverRow = (s, teile) => imgUrl(s) ? s : ((teile || []).find(t => imgUrl(t)) || s);
+/** Fotos im Detail: eigene Fotos, sonst die Fotos der zugeordneten Teile */
+function setPhotos(s, teile) {
+  if (imgList(s).length) return photoStrip(s);
+  const bilder = [...new Set((teile || []).flatMap(imgList))].filter(p => state.imgCache[p]).slice(0, 24);
+  return bilder.length ? `<div class="muted" style="font-size:.85rem;margin-bottom:.2rem">📷 Fotos der Teile</div>${photoStrip({ bilder })}` : '';
+}
+function setListItem(s, n, da, href, extra = '', teile = []) {
   const art = setArt(s);
-  return `<a class="item" href="${href}">${thumb(s, artIcon(art))}
+  return `<a class="item" href="${href}">${thumb(setCoverRow(s, teile), artIcon(art))}
     <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
     <div class="sub">${extra}${num(n)} Teile erfasst</div></div>
     <div class="right">${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
@@ -887,7 +895,7 @@ function viewSets(art = 'reserve') {
     <h1>${artIcon(art)} ${esc(nm)}</h1>
     <button class="btn block" id="ns" style="margin-bottom:.8rem">＋ Neu in ${esc(nm)}</button>
     <div class="list">${list.map(s => { const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
-      return setListItem(s, teile.length, teile.filter(t => t.anzahl > 0).length, '#set/' + s.id); }).join('') || `<div class="card center muted">Hier ist noch nichts angelegt.</div>`}</div>`;
+      return setListItem(s, teile.length, teile.filter(t => t.anzahl > 0).length, '#set/' + s.id, '', teile); }).join('') || `<div class="card center muted">Hier ist noch nichts angelegt.</div>`}</div>`;
   document.getElementById('ns').onclick = async () => { const s = await setDialog(null, art); if (s) location.hash = '#set/' + s.id; };
 }
 
@@ -901,7 +909,7 @@ function viewSet(id) {
   app.innerHTML = `
     <a class="back" href="${back}">‹ ${esc(artName(art))}</a>
     <div class="card">
-      ${photoStrip(s)}
+      ${setPhotos(s, teile)}
       <h1 style="margin-bottom:.3rem">${artIcon(art)} ${esc(s.set_nummer)} ${esc(s.name || '')}</h1>
       ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
       <p><span class="badge green">${da.length} Teile vorhanden</span>${fehlt.length ? `<span class="badge red">${fehlt.length} fehlen</span>` : ''}<span class="badge">${num(sum.stueck)} Stück</span><span class="badge">${euro(sum.wert)}</span></p>

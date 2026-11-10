@@ -11,7 +11,7 @@
     ],
     teile: [
       { id: 11, teile_nr: '30 01 2340', farbe: 'dunkelgrau-metallic', beschreibung: 'Ritterhelm mit Visier und Federbusch, extra langer Name zum Testen der Darstellung', euro: 0.76, anzahl: 3, kiste_id: 21, bild_url: null, bilder: [], notiz: null, user_id: U, created_at: '2026-02-01' },
-      { id: 12, teile_nr: '30 22 1110', farbe: 'rot', beschreibung: 'Schwert', euro: 1234.5, anzahl: 12, kiste_id: 21, bild_url: 'u/teile/old.jpg', bilder: ['u/teile/old.jpg'], notiz: null, user_id: U, created_at: '2026-02-02' },
+      { id: 12, teile_nr: '30 22 1110', farbe: 'rot', beschreibung: 'Schwert', euro: 1234.5, anzahl: 12, kiste_id: 21, bild_url: '11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg', bilder: ['11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg'], notiz: null, user_id: U, created_at: '2026-02-02' },
     ],
     teil_sets: [{ teil_id: 11, set_id: 1, user_id: U }, { teil_id: 11, set_id: 2, user_id: U }, { teil_id: 12, set_id: 2, user_id: U }],
     kisten: [{ id: 21, art: 'Kiste', nummer: '1', name: 'Ritter und Burgzubehör aus den Achtzigern', farbe: 'blau', ort: 'Keller, Regal 2 ganz hinten links', user_id: U }],
@@ -20,7 +20,7 @@
     lego_teil_sets: [{ teil_id: 41, set_id: 31, user_id: U }],
     lego_kisten: [{ id: 51, art: 'Kiste', nummer: '7', name: 'Steine rot', user_id: U }],
     tab_namen: [],
-    storage: ['u/teile/old.jpg'],
+    storage: ['11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg'],
     removed: [],
     log: [],
   });
@@ -98,7 +98,7 @@
         from: () => ({
           upload: async (path) => { db.storage.push(path); save(); return { data: { path }, error: null }; },
           remove: async (paths) => { db.removed.push(...paths); db.storage = db.storage.filter(p => !paths.includes(p)); save(); return { data: [], error: null }; },
-          createSignedUrls: async (paths) => ({ data: paths.map(p => ({ path: p, signedUrl: svg(colorFor(p)) })), error: null }),
+          createSignedUrls: async (paths) => (await new Promise(r => setTimeout(r, 300)), { data: paths.map(p => ({ path: p, signedUrl: svg(colorFor(p)) })), error: null }),
           createSignedUrl: async (p) => ({ data: { signedUrl: svg(colorFor(p)) }, error: null }),
         }),
       },
