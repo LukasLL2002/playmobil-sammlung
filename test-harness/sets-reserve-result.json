@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-10T16:00:29.137Z",
+  "when": "2026-11-11T16:10:29.003Z",
   "viewport": "390x844",
   "results": [
     {
@@ -119,6 +119,40 @@
       }
     },
     {
+      "name": "Reserve search field + count visible",
+      "pass": true,
+      "info": "3 Einträge"
+    },
+    {
+      "name": "search by number ignores spaces/dashes",
+      "pass": true,
+      "info": "1 von 3 Einträgen"
+    },
+    {
+      "name": "search by name",
+      "pass": true
+    },
+    {
+      "name": "search by notes",
+      "pass": true
+    },
+    {
+      "name": "no match message",
+      "pass": true
+    },
+    {
+      "name": "clear button resets",
+      "pass": true
+    },
+    {
+      "name": "search kept when coming back",
+      "pass": true
+    },
+    {
+      "name": "Sets tab has search too",
+      "pass": true
+    },
+    {
       "name": "new Sets tab is empty",
       "pass": true,
       "info": {
@@ -130,10 +164,15 @@
       "pass": true,
       "info": {
         "id": 1001,
-        "created_at": "2026-11-10T16:00:12.572Z",
+        "created_at": "2026-11-11T16:10:11.706Z",
         "set_nummer": "100",
         "name": "Erstes",
         "notiz": null,
+        "farbe": null,
+        "beschreibung": null,
+        "anzahl": null,
+        "euro": null,
+        "kiste_id": null,
         "bilder": [],
         "art": "set",
         "user_id": "11111111-1111-1111-1111-111111111111"
@@ -146,7 +185,7 @@
     {
       "name": "duplicate prompt shows existing tile",
       "pass": true,
-      "info": "Schon vorhanden – überschreiben?\n      In „Sets“ gibt es die Nummer 100 schon:\n      \n        100 Erstes\n        0 Teile zugeordnet · 1 Foto(s)\n      Bei „Ja“ w"
+      "info": "Schon vorhanden – was tun?\n      In „Sets“ gibt es die Nummer 100 schon:\n      \n        100 Erstes\n        0 Teile zugeordnet · 1 Foto(s)\n      Aktualisieren üb"
     },
     {
       "name": "\"Nein\" returns to editing, nothing saved",
@@ -164,7 +203,7 @@
           "name": "Erstes",
           "notiz": "Bleibt",
           "bilder": [
-            "11111111-1111-1111-1111-111111111111/teile/154ed312-84f6-4948-b286-e3a51e0ec6ed.jpg"
+            "11111111-1111-1111-1111-111111111111/teile/d2c7ac3e-4d46-4335-9dd2-80a47ee7837b.jpg"
           ]
         },
         "after": {
@@ -172,7 +211,7 @@
           "name": "Überschrieben",
           "notiz": "Bleibt",
           "bilder": [
-            "11111111-1111-1111-1111-111111111111/teile/154ed312-84f6-4948-b286-e3a51e0ec6ed.jpg"
+            "11111111-1111-1111-1111-111111111111/teile/d2c7ac3e-4d46-4335-9dd2-80a47ee7837b.jpg"
           ]
         }
       }
@@ -202,9 +241,9 @@
       "pass": true,
       "info": {
         "bilder": [
-          "11111111-1111-1111-1111-111111111111/teile/9fcbe73b-890d-40cf-92fc-630140387d28.jpg",
-          "11111111-1111-1111-1111-111111111111/teile/cae17008-3731-4ad2-a3f1-007c7bc02d5a.jpg",
-          "11111111-1111-1111-1111-111111111111/teile/1d979bf7-8fed-4ec5-84f4-97827bb884eb.jpg"
+          "11111111-1111-1111-1111-111111111111/teile/f51ff858-8a60-41ae-a0e5-b5b3e84f4653.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/518fce22-e224-4ff5-95ca-78f9d6f92b2c.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/a71c4d30-bfbb-4828-a35b-863d8f6eda14.jpg"
         ],
         "removed": [
           "11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg"
@@ -233,8 +272,8 @@
       "name": "LEGO multi-image",
       "pass": true,
       "info": [
-        "11111111-1111-1111-1111-111111111111/lego/f0ca4f74-750c-43b8-bc25-c9dda99c9e92.jpg",
-        "11111111-1111-1111-1111-111111111111/lego/aaf1efe9-af27-4de5-b83a-4b4a86cc9f02.jpg"
+        "11111111-1111-1111-1111-111111111111/lego/6c6aaa76-5b28-45bd-97d7-93fd2b1ec014.jpg",
+        "11111111-1111-1111-1111-111111111111/lego/2a4570da-06ff-4366-8fb6-8f38d819b8eb.jpg"
       ]
     },
     {
@@ -243,6 +282,18 @@
     },
     {
       "name": "LEGO Reserve shows old",
+      "pass": true
+    },
+    {
+      "name": "LEGO Reserve search by number",
+      "pass": true
+    },
+    {
+      "name": "LEGO Reserve search no match",
+      "pass": true
+    },
+    {
+      "name": "LEGO Sets tab has search",
       "pass": true
     },
     {
@@ -281,13 +332,13 @@
         ],
         "row": {
           "id": 1004,
-          "created_at": "2026-11-10T16:00:26.536Z",
+          "created_at": "2026-11-11T16:10:26.403Z",
           "user_id": "11111111-1111-1111-1111-111111111111",
           "namen": {
             "reserve": "Lager",
             "sets": "Neue Sets"
           },
-          "updated_at": "2026-11-10T16:00:26.536Z"
+          "updated_at": "2026-11-11T16:10:26.403Z"
         }
       }
     },

@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-11T15:59:11.735Z",
+  "when": "2026-11-11T16:11:24.738Z",
   "viewport": "390x844",
   "results": [
     {
@@ -71,7 +71,7 @@
       "pass": true,
       "info": {
         "id": 1008,
-        "created_at": "2026-11-11T15:58:22.134Z",
+        "created_at": "2026-11-11T16:10:35.271Z",
         "teile_nr": null,
         "farbe": "braun",
         "beschreibung": "Bart",
@@ -171,7 +171,7 @@
       "pass": true,
       "info": {
         "id": 1035,
-        "created_at": "2026-11-11T15:58:46.082Z",
+        "created_at": "2026-11-11T16:10:59.086Z",
         "teile_nr": null,
         "nummer_unbekannt": true,
         "farbe": null,
@@ -245,7 +245,7 @@
       "pass": true,
       "info": {
         "id": 1036,
-        "created_at": "2026-11-11T15:58:49.130Z",
+        "created_at": "2026-11-11T16:11:02.171Z",
         "art": "Kiste",
         "nummer": null,
         "farbe": null,
@@ -310,7 +310,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T15:58:55.498Z",
+        "created_at": "2026-11-11T16:11:08.519Z",
         "set_nummer": "9999",
         "name": "Feuerwehr",
         "notiz": null,
@@ -330,7 +330,7 @@
       "info": [
         {
           "id": 1041,
-          "created_at": "2026-11-11T15:58:55.498Z",
+          "created_at": "2026-11-11T16:11:08.519Z",
           "teile_nr": "9999",
           "beschreibung": "Feuerwehr",
           "farbe": "rot",
@@ -373,7 +373,7 @@
       "info": {
         "leiter": {
           "id": 1044,
-          "created_at": "2026-11-11T15:59:03.614Z",
+          "created_at": "2026-11-11T16:11:16.618Z",
           "teile_nr": "55 55 5555",
           "nummer_unbekannt": false,
           "farbe": null,
@@ -388,7 +388,7 @@
         },
         "s8": {
           "id": 1043,
-          "created_at": "2026-11-11T15:58:58.631Z",
+          "created_at": "2026-11-11T16:11:11.635Z",
           "set_nummer": "8888",
           "name": "Leiterwagen",
           "notiz": null,
@@ -404,7 +404,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T15:58:55.498Z",
+        "created_at": "2026-11-11T16:11:08.519Z",
         "set_nummer": "99-99",
         "name": "Neu",
         "notiz": null,

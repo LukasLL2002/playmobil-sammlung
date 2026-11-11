@@ -253,12 +253,12 @@ function lSets(art = 'reserve') {
   app.innerHTML = `<h1>${artIcon(art)} LEGO – ${esc(nm)}</h1>
     <div class="row" style="margin-bottom:.8rem"><button class="btn grow" id="ns" style="background:#f9a825;color:#111">＋ Neu in ${esc(nm)}</button>
       <a class="btn secondary" href="#l/rebrickable?art=${art}">🔎 Bei Rebrickable suchen</a></div>
-    <div class="list">${list.map(s => {
-      const teile = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)); const n = teile.length;
-      const extra = `${s.jahr ? s.jahr + ' · ' : ''}${s.teile_anzahl ? num(s.teile_anzahl) + ' Teile laut Anleitung · ' : ''}`;
-      return setListItem(s, n, null, '#l/set/' + s.id, extra, teile);
-    }).join('') || '<div class="card center muted">Hier ist noch nichts angelegt.</div>'}
-    </div>`;
+    ${setSearchHtml(nm, setSearchQ['lego-' + art])}`;
+  bindSetSearch('lego-' + art, list, nm, s => {
+    const teile = lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)); const n = teile.length;
+    const extra = `${s.jahr ? s.jahr + ' · ' : ''}${s.teile_anzahl ? num(s.teile_anzahl) + ' Teile laut Anleitung · ' : ''}`;
+    return setListItem(s, n, null, '#l/set/' + s.id, extra, teile);
+  });
   document.getElementById('ns').onclick = async () => { const s = await setDialogX(SETCFG.lego, null, art); if (s) location.hash = '#l/set/' + s.id; };
 }
 function lSet(id) {

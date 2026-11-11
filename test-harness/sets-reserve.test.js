@@ -45,6 +45,18 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const resN = await page.locator('.list .item').count();
   const tabs = await page.$$eval('#tabbar a', as => as.map(a => a.textContent.trim()));
   ok('Reserve shows old sets', resN === 3, { resN, tabs });
+  // Suche in Reserve
+  const sCnt = async () => (await page.textContent('#sCount')).trim();
+  ok('Reserve search field + count visible', await page.isVisible('#sq') && (await sCnt()) === '3 Einträge' && !(await page.isVisible('#sqClear')), await sCnt());
+  await page.fill('#sq', '36 6-6'); ok('search by number ignores spaces/dashes', (await page.locator('#sList .item').count()) === 1 && (await page.textContent('#sList')).includes('Ritterburg') && (await sCnt()) === '1 von 3 Einträgen', await sCnt());
+  await page.fill('#sq', 'piraten'); ok('search by name', (await page.locator('#sList .item').count()) === 1 && (await page.textContent('#sList')).includes('4000'));
+  await page.fill('#sq', 'alte notiz'); ok('search by notes', (await page.locator('#sList .item').count()) === 1 && (await page.textContent('#sList')).includes('3666'));
+  await page.fill('#sq', 'xyz'); ok('no match message', (await page.textContent('#sList')).includes('Nichts gefunden') && (await sCnt()) === '0 von 3 Einträgen');
+  await page.click('#sqClear'); ok('clear button resets', (await page.inputValue('#sq')) === '' && (await page.locator('#sList .item').count()) === 3 && !(await page.isVisible('#sqClear')));
+  await page.fill('#sq', 'zoo'); await go('#teile'); await go('#reserve');
+  ok('search kept when coming back', (await page.inputValue('#sq')) === 'zoo' && (await page.locator('#sList .item').count()) === 1);
+  await page.click('#sqClear');
+  await go('#sets'); ok('Sets tab has search too', await page.isVisible('#sq'));
   await go('#sets');
   const setsEmpty = await page.locator('.list .item').count();
   ok('new Sets tab is empty', setsEmpty === 0 && (await page.textContent('main')).includes('noch nichts angelegt'), { setsEmpty });
@@ -111,6 +123,10 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('LEGO multi-image', l41.bilder.length === 2 && l41.bild_url === l41.bilder[0] && l41.bilder[0].includes('/lego/'), l41.bilder);
   await go('#l/sets'); ok('LEGO Sets empty', (await page.locator('.list .item').count()) === 0);
   await go('#l/reserve'); ok('LEGO Reserve shows old', (await page.locator('.list .item').count()) === 1);
+  await page.fill('#sq', '75-192'); ok('LEGO Reserve search by number', (await page.locator('#sList .item').count()) === 1 && (await page.textContent('#sCount')).includes('1 von 1'));
+  await page.fill('#sq', 'falcon xyz'); ok('LEGO Reserve search no match', (await page.locator('#sList .item').count()) === 0);
+  await page.click('#sqClear'); await go('#l/sets'); ok('LEGO Sets tab has search', await page.isVisible('#sq'));
+  await go('#l/reserve');
   await page.click('#ns'); await fillSet('75 192', 'Falke'); await page.click('dialog[open] button[type=submit]');
   await page.waitForSelector('.dupdlg[open]'); await page.click('.dupdlg [data-yes]'); await page.waitForTimeout(500);
   d = await db(); const ls = d.lego_sets.find(s => s.id === 31);

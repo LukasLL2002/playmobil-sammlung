@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261111-1';
+const ASSET_V = '20261111-2';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -1012,14 +1012,42 @@ function exportSetsCsv(lego) {
   a.download = `${lego ? 'lego' : 'playmobil'}-reserve-sets-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
 }
+/** Suche in Reserve/Sets: Nummer (ohne Leerzeichen/Striche), Name, Notiz, Beschreibung, Farbe */
+const setSearchQ = {};
+function setMatches(s, q) {
+  q = String(q || '').trim(); if (!q) return true;
+  const nr = normNr(s.set_nummer), qn = normNr(q);
+  if (qn && nr.includes(qn)) return true;
+  const txt = norm([s.set_nummer, s.name, s.notiz, s.beschreibung, s.farbe].filter(Boolean).join(' '));
+  return norm(q).split(/\s+/).filter(Boolean).every(w => txt.includes(w) || (normNr(w) && nr.includes(normNr(w))));
+}
+function setSearchHtml(nm, val) {
+  return `<div class="search" style="display:flex;gap:.4rem;align-items:center"><input id="sq" type="search" style="flex:1" placeholder="${esc(nm)} durchsuchen: Nummer, Name, Notiz …" value="${esc(val || '')}" autocomplete="off">
+    <button type="button" class="btn small secondary" id="sqClear" title="Suche leeren" ${val ? '' : 'hidden'}>✕</button></div>
+    <div id="sCount" class="muted" style="margin-bottom:.5rem"></div><div id="sList" class="list"></div>`;
+}
+function bindSetSearch(key, list, nm, itemHtml) {
+  const q = document.getElementById('sq'), clr = document.getElementById('sqClear');
+  const render = () => {
+    const v = setSearchQ[key] || '', res = list.filter(s => setMatches(s, v));
+    clr.hidden = !v;
+    document.getElementById('sCount').textContent = v ? `${num(res.length)} von ${num(list.length)} Einträgen` : `${num(list.length)} Einträge`;
+    document.getElementById('sList').innerHTML = res.map(itemHtml).join('')
+      || (list.length ? '<div class="card center muted">Nichts gefunden.</div>' : `<div class="card center muted">Hier ist noch nichts angelegt.</div>`);
+  };
+  q.oninput = () => { setSearchQ[key] = q.value; render(); };
+  clr.onclick = () => { setSearchQ[key] = ''; q.value = ''; render(); q.focus(); };
+  render();
+}
 function viewSets(art = 'reserve') {
   const nm = artName(art);
   const list = state.sets.filter(s => setArt(s) === art);
   app.innerHTML = `
     <h1>${artIcon(art)} ${esc(nm)}</h1>
     <button class="btn block" id="ns" style="margin-bottom:.8rem">＋ Neu in ${esc(nm)}</button>
-    <div class="list">${list.map(s => { const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
-      return setListItem(s, teile.length, teile.filter(t => t.anzahl > 0).length, '#set/' + s.id, '', teile); }).join('') || `<div class="card center muted">Hier ist noch nichts angelegt.</div>`}</div>`;
+    ${setSearchHtml(nm, setSearchQ['pm-' + art])}`;
+  bindSetSearch('pm-' + art, list, nm, s => { const teile = state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id));
+    return setListItem(s, teile.length, teile.filter(t => t.anzahl > 0).length, '#set/' + s.id, '', teile); });
   document.getElementById('ns').onclick = async () => { const s = await setDialog(null, art); if (s) location.hash = '#set/' + s.id; };
 }
 
