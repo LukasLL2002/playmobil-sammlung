@@ -1,0 +1,493 @@
+{
+  "when": "2026-11-11T15:59:11.735Z",
+  "viewport": "390x844",
+  "results": [
+    {
+      "name": "Teile tab has no Vorrat/Kassenbon buttons",
+      "pass": true,
+      "info": {
+        "vorratLinks": 0
+      }
+    },
+    {
+      "name": "„＋ Teil“ opens Playmobil part form",
+      "pass": true,
+      "info": "http://localhost:8766/index.html#teil/neu"
+    },
+    {
+      "name": "Teile tab offers Excel import",
+      "pass": true
+    },
+    {
+      "name": "LEGO has no Kassenbon",
+      "pass": true
+    },
+    {
+      "name": "all 5 sheets listed, checked, with row counts",
+      "pass": true,
+      "info": [
+        {
+          "n": "0-9",
+          "on": true,
+          "t": "0-9 – 2 Zeilen"
+        },
+        {
+          "n": "A-G",
+          "on": true,
+          "t": "A-G – 4 Zeilen"
+        },
+        {
+          "n": "H-M",
+          "on": true,
+          "t": "H-M – 1 Zeilen · ohne Überschriften, Spalten wie im ersten Blatt"
+        },
+        {
+          "n": "N-S",
+          "on": true,
+          "t": "N-S – 2 Zeilen · ohne Überschriften, Spalten wie im ersten Blatt"
+        },
+        {
+          "n": "T-Z",
+          "on": true,
+          "t": "T-Z – 1 Zeilen · ohne Überschriften, Spalten wie im ersten Blatt"
+        }
+      ]
+    },
+    {
+      "name": "review: 9 new (file duplicate across sheets merged)",
+      "pass": true,
+      "info": "9 neu0 schon vorhanden (gleich)0 vorhanden mit Änderungen2 neue Reserve-Einträge"
+    },
+    {
+      "name": "first import: all sheets imported (9 new)",
+      "pass": true,
+      "info": {
+        "sum": "9 neu0 aktualisiert0 übersprungen ",
+        "n": 9
+      }
+    },
+    {
+      "name": "\"---\" treated as empty; empty number marked unknown",
+      "pass": true,
+      "info": {
+        "id": 1008,
+        "created_at": "2026-11-11T15:58:22.134Z",
+        "teile_nr": null,
+        "farbe": "braun",
+        "beschreibung": "Bart",
+        "anzahl": 1,
+        "euro": null,
+        "kiste_id": null,
+        "notiz": null,
+        "nummer_unbekannt": true,
+        "user_id": "11111111-1111-1111-1111-111111111111",
+        "bilder": []
+      }
+    },
+    {
+      "name": "file duplicate merged (Ritter once, sets from both sheets)",
+      "pass": true,
+      "info": [
+        "4000"
+      ]
+    },
+    {
+      "name": "cell \"3347; 3348\" links both Reserve entries",
+      "pass": true,
+      "info": [
+        "3347",
+        "3348"
+      ]
+    },
+    {
+      "name": "reimport review: 0 new, 9 unchanged",
+      "pass": true,
+      "info": "0 neu9 schon vorhanden (gleich)0 vorhanden mit Änderungen"
+    },
+    {
+      "name": "reimport: no new rows, nothing deleted",
+      "pass": true,
+      "info": {
+        "after": 11,
+        "before": {
+          "teile": 11,
+          "links": 8,
+          "sets": 5,
+          "kisten": 1
+        },
+        "deletes": 0,
+        "sum": "0 neu0 aktualisiert9 übersprungen "
+      }
+    },
+    {
+      "name": "ODS file read (all sheets, 0 new on reimport)",
+      "pass": true,
+      "info": 5
+    },
+    {
+      "name": "changed values listed for decision",
+      "pass": true,
+      "info": {
+        "sum": "0 neu7 schon vorhanden (gleich)2 vorhanden mit Änderungen",
+        "chg": 2
+      }
+    },
+    {
+      "name": "must decide before import",
+      "pass": true
+    },
+    {
+      "name": "only chosen item updated; summary",
+      "pass": true,
+      "info": {
+        "sum": "0 neu1 aktualisiert8 übersprungen ",
+        "helm": 5,
+        "zaun": "Zaun"
+      }
+    },
+    {
+      "name": "\"Alle aktualisieren\" selects all",
+      "pass": true
+    },
+    {
+      "name": "\"Alle überspringen\" selects all",
+      "pass": true
+    },
+    {
+      "name": "sheet can be unchecked",
+      "pass": true
+    },
+    {
+      "name": "LEGO import reads all sheets",
+      "pass": true,
+      "info": 10
+    },
+    {
+      "name": "number field disabled when \"Keine Nummer gefunden\"",
+      "pass": true
+    },
+    {
+      "name": "unknown flag saved",
+      "pass": true,
+      "info": {
+        "id": 1035,
+        "created_at": "2026-11-11T15:58:46.082Z",
+        "teile_nr": null,
+        "nummer_unbekannt": true,
+        "farbe": null,
+        "beschreibung": "Unbekanntes Teil",
+        "anzahl": 1,
+        "euro": null,
+        "kiste_id": null,
+        "notiz": null,
+        "bilder": [],
+        "bild_url": null,
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "\"Ohne Nummer\" filter + badge",
+      "pass": true,
+      "info": [
+        "🧩\n    Unbekanntes Teil\n    ohne Nr. \n  ",
+        "🧩\n    Bart\n    ohne Nr. braun\n    \n    "
+      ]
+    },
+    {
+      "name": "PM name search: own collection suggestion + web links",
+      "pass": true,
+      "info": {
+        "pmSug": [
+          "🧩 30 22 11102er SchwertDeine Sammlung Übernehmen",
+          "30 22 1110Schwert · rotDeine Sammlung Übernehmen"
+        ],
+        "links": [
+          "https://www.klickypedia.com/?s=Schwert",
+          "https://www.google.com/search?q=Playmobil%20Ersatzteil%20Schwert",
+          "https://www.google.com/search?tbm=isch&q=Playmobil%20Schwert"
+        ]
+      }
+    },
+    {
+      "name": "pick fills number, nothing saved",
+      "pass": true
+    },
+    {
+      "name": "PM photo search reads printed number (OCR)",
+      "pass": true,
+      "info": [
+        "30 00 1234",
+        "1234"
+      ]
+    },
+    {
+      "name": "LEGO name search: Rebrickable suggestion (mocked)",
+      "pass": true,
+      "info": [
+        "🧩 3001Brick 2 x 4 mit einem sehr langen Namen der umbrechen soll · Bright RedDeine Sammlung Übernehmen",
+        " 3001Brick 2 x 4Rebrickable Übernehmen"
+      ]
+    },
+    {
+      "name": "LEGO photo search: Brickognize suggestion (mocked)",
+      "pass": true
+    },
+    {
+      "name": "LEGO pick fills number",
+      "pass": true
+    },
+    {
+      "name": "Kiste number not required",
+      "pass": true
+    },
+    {
+      "name": "Kiste with empty number saved",
+      "pass": true,
+      "info": {
+        "id": 1036,
+        "created_at": "2026-11-11T15:58:49.130Z",
+        "art": "Kiste",
+        "nummer": null,
+        "farbe": null,
+        "name": "Ohne Nummer Kiste",
+        "ort": null,
+        "notiz": null,
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "Kiste with free-text number saved",
+      "pass": true
+    },
+    {
+      "name": "list shows names for empty numbers",
+      "pass": true,
+      "info": [
+        "Kiste 1 – Ritter und Burgzubehör aus den Achtzigern",
+        "Kiste A-G 2b",
+        "Kiste – Ohne Nummer Kiste"
+      ]
+    },
+    {
+      "name": "LEGO Kiste with empty number saved",
+      "pass": true
+    },
+    {
+      "name": "delete Kiste: confirm says parts stay",
+      "pass": true,
+      "info": "„Kiste 1 – Ritter und Burgzubehör aus den Achtzigern“ löschen?\n\nDie 2 Teile darin werden NICHT gelöscht – sie sind danach nur keiner Kiste mehr zugeordnet."
+    },
+    {
+      "name": "delete Kiste: parts kept, unassigned",
+      "pass": true,
+      "info": {
+        "inK": [
+          11,
+          12
+        ]
+      }
+    },
+    {
+      "name": "delete LEGO Kiste: parts kept, unassigned",
+      "pass": true
+    },
+    {
+      "name": "Reserve form has part fields",
+      "pass": true,
+      "info": [
+        "set_nummer",
+        "name",
+        "farbe",
+        "anzahl",
+        "beschreibung",
+        "euro",
+        "kiste_id",
+        "notiz"
+      ]
+    },
+    {
+      "name": "Reserve saved with part fields",
+      "pass": true,
+      "info": {
+        "id": 1040,
+        "created_at": "2026-11-11T15:58:55.498Z",
+        "set_nummer": "9999",
+        "name": "Feuerwehr",
+        "notiz": null,
+        "farbe": "rot",
+        "beschreibung": null,
+        "anzahl": 2,
+        "euro": 4.5,
+        "kiste_id": 1039,
+        "bilder": [],
+        "art": "reserve",
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "matching part created in Teile, linked, in Kiste",
+      "pass": true,
+      "info": [
+        {
+          "id": 1041,
+          "created_at": "2026-11-11T15:58:55.498Z",
+          "teile_nr": "9999",
+          "beschreibung": "Feuerwehr",
+          "farbe": "rot",
+          "anzahl": 2,
+          "euro": 4.5,
+          "kiste_id": 1039,
+          "user_id": "11111111-1111-1111-1111-111111111111",
+          "bilder": []
+        }
+      ]
+    },
+    {
+      "name": "Reserve tile shows Kiste + price line",
+      "pass": true,
+      "info": "🏰 9999 Feuerwehr rot · 📦 Kiste 7 1 Teile erfasst 4,50 € je Stück · 9,00 € gesamt 2×1/1 da"
+    },
+    {
+      "name": "Reserve detail shows Kiste",
+      "pass": true
+    },
+    {
+      "name": "editing Reserve updates the same part (no duplicate)",
+      "pass": true
+    },
+    {
+      "name": "part appears in Kiste",
+      "pass": true
+    },
+    {
+      "name": "from part form: dialog only creates group entry",
+      "pass": true
+    },
+    {
+      "name": "part form values survive",
+      "pass": true
+    },
+    {
+      "name": "part saved in Teile with Kiste, linked to new Reserve; Reserve has Kiste",
+      "pass": true,
+      "info": {
+        "leiter": {
+          "id": 1044,
+          "created_at": "2026-11-11T15:59:03.614Z",
+          "teile_nr": "55 55 5555",
+          "nummer_unbekannt": false,
+          "farbe": null,
+          "beschreibung": "Leiter",
+          "anzahl": 4,
+          "euro": null,
+          "kiste_id": 1039,
+          "notiz": null,
+          "bilder": [],
+          "bild_url": null,
+          "user_id": "11111111-1111-1111-1111-111111111111"
+        },
+        "s8": {
+          "id": 1043,
+          "created_at": "2026-11-11T15:58:58.631Z",
+          "set_nummer": "8888",
+          "name": "Leiterwagen",
+          "notiz": null,
+          "kiste_id": 1039,
+          "bilder": [],
+          "art": "reserve",
+          "user_id": "11111111-1111-1111-1111-111111111111"
+        }
+      }
+    },
+    {
+      "name": "duplicate overwrite still only number+name",
+      "pass": true,
+      "info": {
+        "id": 1040,
+        "created_at": "2026-11-11T15:58:55.498Z",
+        "set_nummer": "99-99",
+        "name": "Neu",
+        "notiz": null,
+        "farbe": "rot",
+        "beschreibung": null,
+        "anzahl": 3,
+        "euro": 4.5,
+        "kiste_id": 1039,
+        "bilder": [],
+        "art": "reserve",
+        "user_id": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    {
+      "name": "part form: prompt offers Aktualisieren / Diesem Teil zuordnen / Abbrechen",
+      "pass": true,
+      "info": [
+        "Aktualisieren",
+        "Diesem Teil zuordnen",
+        "Abbrechen"
+      ]
+    },
+    {
+      "name": "Abbrechen: nothing changed, set dialog + part form values kept",
+      "pass": true
+    },
+    {
+      "name": "Diesem Teil zuordnen: existing entry unchanged, shown in chips",
+      "pass": true
+    },
+    {
+      "name": "Diesem Teil zuordnen: part saved + linked, old links kept",
+      "pass": true,
+      "info": [
+        1041,
+        1046
+      ]
+    },
+    {
+      "name": "Aktualisieren: current part gets entry in chips",
+      "pass": true
+    },
+    {
+      "name": "Aktualisieren: number+name updated, all existing links survive, part linked",
+      "pass": true,
+      "info": {
+        "links2": [
+          1041,
+          1046
+        ],
+        "now": [
+          1041,
+          1046,
+          1048
+        ]
+      }
+    },
+    {
+      "name": "Reserve tab: prompt offers Aktualisieren / Vorhandenes öffnen / Abbrechen (no part option)",
+      "pass": true,
+      "info": [
+        "Aktualisieren",
+        "Vorhandenes öffnen",
+        "Abbrechen"
+      ]
+    },
+    {
+      "name": "Vorhandenes öffnen: shows existing entry, nothing changed",
+      "pass": true
+    },
+    {
+      "name": "LEGO part form: Diesem Teil zuordnen adds chip, entry unchanged",
+      "pass": true
+    },
+    {
+      "name": "Reserve/Sets export includes new fields",
+      "pass": true,
+      "info": "﻿Bereich;Nummer;Name;Beschreibung;Farbe;Anzahl;Einzelpreis;Wert gesamt;In Kiste;Notiz;Teile zugeordnet;Fotos\r"
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "info": []
+    }
+  ]
+}

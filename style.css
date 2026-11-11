@@ -208,3 +208,15 @@ dialog .gallery{grid-template-columns:repeat(auto-fill,minmax(72px,1fr))}
 .dupdlg .item{background:var(--blue-l);border-radius:12px;padding:.5rem;display:flex;gap:.6rem;align-items:center}
 dialog form .row label.btn{display:flex;align-items:center;justify-content:center;margin:0}
 dialog{max-height:92vh;overflow:auto}
+/* Import: Blätter, Prüfung */
+.sheetrow{display:flex;align-items:center;gap:.45rem;margin:.3rem 0;font-weight:400;cursor:pointer}
+.sheetrow input{width:auto;margin:0}
+.revlist{max-height:240px;overflow:auto;padding-left:1.2rem;font-size:.9rem}
+.chg{border:1px solid var(--border);border-radius:12px;padding:.6rem;margin:.5rem 0;background:#fff}
+.chg.need{border:2px solid #e65100;background:#fff3e0}
+.chg table.mini{margin:.4rem 0}
+.badge.orange{background:#fff3e0;color:#e65100}
+.nrbadge{font-size:.75rem;padding:.05rem .4rem;margin:0}
+body.readonly #impTeile,body.readonly #addTeil,body.readonly #nrSearch{display:none!important}
+.psdlg .item{background:var(--blue-l);border-radius:12px;padding:.5rem;margin-bottom:.4rem;display:flex;gap:.6rem;align-items:center}
+input:disabled{background:#f1f3f5;color:#888}

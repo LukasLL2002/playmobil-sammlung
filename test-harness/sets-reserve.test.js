@@ -66,7 +66,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await go('#sets'); await page.click('#ns'); await fillSet(' 1-0 0 ', 'Überschrieben');
   await page.click('dialog[open] button[type=submit]'); await page.waitForSelector('.dupdlg[open]');
   const dupTxt = await page.textContent('.dupdlg');
-  ok('duplicate prompt shows existing tile', dupTxt.includes('Schon vorhanden – überschreiben?') && dupTxt.includes('Erstes') && (await page.locator('.dupdlg [data-dup] img.thumb').count()) === 1, dupTxt.slice(0, 160));
+  ok('duplicate prompt shows existing tile', dupTxt.includes('Schon vorhanden – was tun?') && dupTxt.includes('Erstes') && (await page.locator('.dupdlg [data-dup] img.thumb').count()) === 1, dupTxt.slice(0, 160));
   await page.screenshot({ path: path.join(__dirname, 'sets-duplicate-390.png') });
   await page.click('.dupdlg [data-no]'); await page.waitForTimeout(250);
   const stillOpen = await page.locator('dialog[open] input[name=set_nummer]').inputValue();

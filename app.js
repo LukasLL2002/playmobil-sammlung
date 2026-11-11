@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261110-2';
+const ASSET_V = '20261111-1';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -44,7 +44,7 @@ async function openBonView() {
 }
 
 const state = { user: null, isAdmin: false, viewUid: null, viewEmail: null, viewKind: null, viewRecht: null, viewBereich: null, shares: [], merges: [], kisten: [], sets: [], teile: [], loaded: false, imgCache: {},
-  filter: { q: '', farbe: '', kiste: '', set: '' } };
+  filter: { q: '', farbe: '', kiste: '', set: '', nr: '' } };
 const app = document.getElementById('app');
 
 // ---------- Hilfsfunktionen ----------
@@ -122,7 +122,33 @@ function fail(err) {
 const owner = () => state.viewUid || state.user.id;
 const kisteById = id => state.kisten.find(k => k.id === Number(id));
 const setById = id => state.sets.find(s => s.id === Number(id));
-const kisteLabel = k => k ? `${k.art} ${k.nummer}${k.name ? ' – ' + k.name : ''}` : '';
+const kisteLabel = k => k ? `${k.art || 'Kiste'}${String(k.nummer ?? '').trim() ? ' ' + String(k.nummer).trim() : ''}${k.name ? ' – ' + k.name : (String(k.nummer ?? '').trim() ? '' : ' (ohne Nummer)')}` : '';
+/** Teile-Nummer: „---“ usw. gilt als keine Nummer */
+const cleanNr = v => { const s = String(v ?? '').trim(); return /^[-–—_]+$/.test(s) ? '' : s; };
+const hasNr = t => !!cleanNr(t?.teile_nr) && !t?.nummer_unbekannt;
+const NR_BADGE = '<span class="badge orange nrbadge">ohne Nr.</span>';
+/** Lazy: Teilenummer-Suche */
+async function openPartSearch(opts) {
+  if (typeof window.partSearchDialog !== 'function') await loadScript('partsearch.js?v=' + ASSET_V);
+  return window.partSearchDialog(opts);
+}
+/** Feld „Teile-Nr.“ mit „Keine Nummer gefunden“ und „Nummer suchen“ */
+function nrFieldHtml(t) {
+  const unk = !!t.nummer_unbekannt || (!!t.teile_nr && !cleanNr(t.teile_nr));
+  return `<label for="nr">Teile-Nr.</label><input id="nr" value="${esc(unk ? '' : t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340" ${unk ? 'disabled' : ''}>
+    <label class="sheetrow" style="margin:.35rem 0 0;font-weight:400"><input type="checkbox" id="nrUnk" ${unk ? 'checked' : ''}> Keine Nummer gefunden</label>
+    <button type="button" class="btn small secondary" id="nrSearch" style="margin-top:.35rem">🔍 Nummer suchen</button>`;
+}
+function bindNrField(kind, getName) {
+  const nr = document.getElementById('nr'), unk = document.getElementById('nrUnk');
+  unk.onchange = () => { nr.disabled = unk.checked; if (unk.checked) nr.value = ''; else nr.focus(); };
+  document.getElementById('nrSearch').onclick = () => openPartSearch({ kind, name: getName(), onPick: s => {
+    unk.checked = false; nr.disabled = false; nr.value = s.nr || '';
+    const b = document.getElementById(kind === 'lego' ? 'bes' : 'beschr'); if (b && !b.value.trim() && s.name) b.value = s.name;
+    toast('Nummer übernommen – bitte noch speichern.');
+  } }).catch(fail);
+}
+const nrValues = () => { const unk = document.getElementById('nrUnk').checked; return { teile_nr: unk ? null : (document.getElementById('nr').value.trim() || null), nummer_unbekannt: unk }; };
 const setLabel = s => s ? `${s.set_nummer}${s.name ? ' ' + s.name : ''}` : '';
 const teilSets = t => (t.teil_sets || []).map(x => setById(x.set_id)).filter(Boolean);
 const teilTitle = t => t.beschreibung || (t.teile_nr ? 'Teil ' + t.teile_nr : 'Ohne Beschreibung');
@@ -479,6 +505,8 @@ function matches(t, f) {
   if (f.farbe && norm(t.farbe) !== norm(f.farbe)) return false;
   if (f.kiste && String(t.kiste_id) !== f.kiste && !(f.kiste === 'none' && !t.kiste_id)) return false;
   if (f.set && !(t.teil_sets || []).some(x => String(x.set_id) === f.set)) return false;
+  if (f.nr === 'ohne' && hasNr(t)) return false;
+  if (f.nr === 'mit' && !hasNr(t)) return false;
   if (!f.q) return true;
   const k = kisteById(t.kiste_id);
   const hay = norm([t.teile_nr, t.beschreibung, t.farbe, t.notiz, k && kisteLabel(k), k?.farbe, k?.ort, ...teilSets(t).map(setLabel)].join(' '));
@@ -490,7 +518,7 @@ function teilItem(t) {
   const sets = teilSets(t);
   return `<a class="item" href="#teil/${t.id}">${thumb(t)}
     <div class="info"><div class="title">${esc(teilTitle(t))}</div>
-    <div class="sub">${t.teile_nr ? 'Nr. ' + esc(t.teile_nr) + ' · ' : ''}${dot(t.farbe)}${esc(t.farbe || '')}</div>
+    <div class="sub">${hasNr(t) ? 'Nr. ' + esc(t.teile_nr) + ' · ' : NR_BADGE + ' '}${cleanNr(t.farbe) ? dot(t.farbe) + esc(t.farbe) : ''}</div>
     <div class="sub">${[k ? '📦 ' + esc(kisteLabel(k)) : '', ...['reserve', 'set'].map(a => { const l = sets.filter(s => setArt(s) === a); return l.length ? artIcon(a) + ' ' + esc(l.map(s => s.set_nummer).join(', ')) : ''; })].filter(Boolean).join(' · ')}</div>
     ${priceSubHtml(t.euro, t.anzahl)}</div>
     <div class="right"><b>${num(t.anzahl)}×</b></div></a>`;
@@ -505,11 +533,11 @@ function viewTeile() {
       <select id="fFarbe"><option value="">Alle Farben</option>${farben.map(x => `<option ${norm(x) === norm(f.farbe) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="fKiste"><option value="">Alle Kisten</option><option value="none" ${f.kiste === 'none' ? 'selected' : ''}>Ohne Kiste</option>${state.kisten.map(k => `<option value="${k.id}" ${String(k.id) === f.kiste ? 'selected' : ''}>${esc(kisteLabel(k))}</option>`).join('')}</select>
       <select id="fSet"><option value="">Alle ${esc(artName('reserve'))} &amp; ${esc(artName('set'))}</option>${setOptions(state.sets, false, f.set)}</select>
+      <select id="fNr"><option value="">Alle Nummern</option><option value="mit" ${f.nr === 'mit' ? 'selected' : ''}>Mit Nummer</option><option value="ohne" ${f.nr === 'ohne' ? 'selected' : ''}>Ohne Nummer</option></select>
     </div>
-    <div class="row" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
-      <a class="btn small secondary" href="#v/bon">📷 Kassenbon</a>
-      <a class="btn small" href="#v/artikel/neu" style="background:#2e7d32">＋ Artikel</a>
-      <a class="btn small secondary" href="#v/uebersicht" title="Excel und Übersicht">⬇️ Excel</a>
+    <div class="row" id="teileActions" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
+      <a class="btn small" href="#teil/neu" id="addTeil">＋ Teil</a>
+      <a class="btn small secondary" href="#import" id="impTeile">📥 Aus Excel übernehmen</a>
     </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
@@ -525,6 +553,7 @@ function viewTeile() {
   document.getElementById('fFarbe').onchange = e => { f.farbe = e.target.value; render(); };
   document.getElementById('fKiste').onchange = e => { f.kiste = e.target.value; render(); };
   document.getElementById('fSet').onchange = e => { f.set = e.target.value; render(); };
+  document.getElementById('fNr').onchange = e => { f.nr = e.target.value; render(); };
   render();
 }
 
@@ -542,7 +571,7 @@ function viewTeil(id) {
       ${photoStrip(t)}
       <h1>${esc(teilTitle(t))}</h1>
       <dl class="dl">
-        <dt>Teile-Nr.</dt><dd>${esc(t.teile_nr || '–')}</dd>
+        <dt>Teile-Nr.</dt><dd>${hasNr(t) ? esc(t.teile_nr) : 'Keine Nummer gefunden'}</dd>
         <dt>Farbe</dt><dd>${dot(t.farbe)}${esc(t.farbe || '–')}</dd>
         <dt>Anzahl</dt><dd>${num(t.anzahl)}</dd>
         <dt>Preis</dt><dd>${t.euro != null ? esc(priceLine(t.euro, t.anzahl)) : '–'}</dd>
@@ -580,7 +609,7 @@ function teilForm(t) {
       <label>Fotos</label>
       ${galleryHtml('tgal')}
       <div class="grid2">
-        <div><label for="nr">Teile-Nr.</label><input id="nr" value="${esc(t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340"></div>
+        <div>${nrFieldHtml(t)}</div>
         <div><label for="farbe">Farbe</label>${suggestField('farbe', t.farbe, [...farben, 'rot', 'blau', 'grün', 'gelb', 'schwarz', 'weiß', 'grau', 'braun', 'orange', 'rosa', 'lila', 'silber', 'gold', 'beige', 'transparent'], 'z.B. rot', 'Farbe wählen')}</div>
       </div>
       <label for="beschr">Beschreibung</label><input id="beschr" value="${esc(t.beschreibung)}" placeholder="z.B. Ritterhelm mit Visier">
@@ -608,10 +637,11 @@ function teilForm(t) {
   sSel.onchange = () => { if (sSel.value) { chosenSets.push(Number(sSel.value)); fillSets(); } };
   document.getElementById('chips').onclick = e => { const id = e.target.dataset?.id; if (id) { chosenSets = chosenSets.filter(x => x !== Number(id)); fillSets(); } };
   document.getElementById('newKiste').onclick = async () => { const k = await kisteDialog(); if (k) fillKisten(k.id); };
-  const addNewSet = async art => { const s = await setDialog(null, art); if (s && !chosenSets.includes(s.id)) { chosenSets.push(s.id); } fillSets(); };
+  const addNewSet = async art => { const s = await setDialog(null, art, { fromPart: true, kiste_id: kSel.value || null }); if (s && !chosenSets.includes(s.id)) { chosenSets.push(s.id); } fillSets(); };
   document.getElementById('newRes').onclick = () => addNewSet('reserve');
   document.getElementById('newSet').onclick = () => addNewSet('set');
   bindSuggest('farbe');
+  bindNrField('playmobil', () => document.getElementById('beschr').value.trim());
   const updEurPrev = () => {
     const el = document.getElementById('eurPrev'); if (!el) return;
     try {
@@ -630,7 +660,7 @@ function teilForm(t) {
     try {
       const eurRaw = document.getElementById('eur').value.trim().replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
       const row = {
-        teile_nr: document.getElementById('nr').value.trim() || null,
+        ...nrValues(),
         farbe: document.getElementById('farbe').value.trim() || null,
         beschreibung: document.getElementById('beschr').value.trim() || null,
         anzahl: Math.max(0, parseInt(document.getElementById('anz').value, 10) || 0),
@@ -694,11 +724,24 @@ dialog.KEEP = Symbol('keep');
 function kisteFields(k = {}) {
   return `<div class="grid2">
     <div><label>Art</label><select name="art"><option ${k.art !== 'Tüte' ? 'selected' : ''}>Kiste</option><option ${k.art === 'Tüte' ? 'selected' : ''}>Tüte</option></select></div>
-    <div><label>Nummer</label><input name="nummer" required value="${esc(k.nummer ?? (state.kisten.length + 1))}"></div></div>
+    <div><label>Nummer <span class="muted" style="font-weight:400">(freiwillig)</span></label><input name="nummer" value="${esc(k.nummer ?? '')}" placeholder="z.B. ${esc(String(state.kisten.length + 1))}, A-G oder leer" autocomplete="off"></div></div>
     <div class="grid2"><div><label>Farbe</label><input name="farbe" value="${esc(k.farbe)}" placeholder="z.B. blau"></div>
     <div><label>Name</label><input name="name" value="${esc(k.name)}" placeholder="z.B. Ritter"></div></div>
     <label>Ort</label><input name="ort" value="${esc(k.ort)}" placeholder="z.B. Keller, Regal 2">
     <label>Notiz</label><textarea name="notiz">${esc(k.notiz)}</textarea>`;
+}
+const kisteNrKey = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+/** Kiste/Tüte löschen – Teile darin bleiben erhalten (nur ohne Kiste) */
+async function deleteKiste(table, partTable, k, teile, label) {
+  const n = teile.length;
+  const msg = n ? `„${label}“ löschen?\n\nDie ${n} Teil${n > 1 ? 'e' : ''} darin ${n > 1 ? 'werden' : 'wird'} NICHT gelöscht – sie sind danach nur keiner Kiste mehr zugeordnet.` : `„${label}“ löschen?`;
+  if (!confirm(msg)) return false;
+  if (n) { const u = await sb.from(partTable).update({ kiste_id: null }).eq('kiste_id', k.id); if (u.error) { fail(u.error); return false; } }
+  const { error } = await sb.from(table).delete().eq('id', k.id);
+  if (error) { fail(error); return false; }
+  teile.forEach(t => { t.kiste_id = null; });
+  toast(n ? `Gelöscht. ${n} Teil${n > 1 ? 'e sind' : ' ist'} jetzt ohne Kiste.` : 'Gelöscht.', 4000);
+  return true;
 }
 const formVals = (form, names) => Object.fromEntries(names.map(n => [n, (form.elements[n].value || '').trim() || null]));
 function kisteDialog(k) {
@@ -706,8 +749,9 @@ function kisteDialog(k) {
     <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
   dialog.current._save = async d => {
     const row = formVals(d.querySelector('form'), ['art', 'nummer', 'farbe', 'name', 'ort', 'notiz']);
+    if (row.nummer && state.kisten.some(x => x.id !== k?.id && (x.art || 'Kiste') === row.art && kisteNrKey(x.nummer) === kisteNrKey(row.nummer))) throw new Error(`${row.art} ${row.nummer} gibt es schon. Bitte eine andere Nummer wählen oder leer lassen.`);
     const r = k ? await sb.from('kisten').update(row).eq('id', k.id).select().single() : await sb.from('kisten').insert({ ...row, user_id: owner() }).select().single();
-    if (r.error) throw r.error;
+    if (r.error) { if (String(r.error.code) === '23505') throw new Error('Diese Nummer gibt es schon. Bitte eine andere wählen oder leer lassen.'); throw r.error; }
     state.kisten = (k ? state.kisten.map(x => x.id === k.id ? r.data : x) : [...state.kisten, r.data]).sort((a, b) => sortNat(a.nummer, b.nummer));
     toast('Kiste gespeichert ✔'); return r.data;
   };
@@ -715,33 +759,66 @@ function kisteDialog(k) {
 }
 const SETCFG = {
   pm: { table: 'sets', lego: false, folder: 'teile', list: () => state.sets, put: l => { state.sets = l; }, href: id => '#set/' + id,
-    countTeile: s => state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id)).length },
+    countTeile: s => state.teile.filter(t => (t.teil_sets || []).some(x => x.set_id === s.id)).length,
+    st: () => state, kisten: () => state.kisten, partTable: 'teile', link: 'teil_sets', rel: 'teil_sets' },
   lego: { table: 'lego_sets', lego: true, folder: 'lego', list: () => lstate.sets, put: l => { lstate.sets = l; }, href: id => '#l/set/' + id,
-    countTeile: s => lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)).length },
+    countTeile: s => lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)).length,
+    st: () => lstate, kisten: () => lstate.kisten, partTable: 'lego_teile', link: 'lego_teil_sets', rel: 'lego_teil_sets' },
 };
+const SET_PART_FIELDS = ['farbe', 'beschreibung', 'anzahl', 'euro', 'kiste_id'];
+const setHasPartInfo = r => SET_PART_FIELDS.some(f => r[f] != null && r[f] !== '');
+/** Reserve/Set mit Teile-Angaben: passendes Teil unter „Teile“ anlegen bzw. ergänzen und verknüpfen (ohne Doppelte) */
+async function ensurePartForSet(cfg, set, row) {
+  const st = cfg.st();
+  const nr = normNr(set.set_nummer);
+  const linked = st.teile.filter(t => (t[cfg.rel] || []).some(x => x.set_id === set.id));
+  let part = linked.find(t => normNr(cleanNr(t.teile_nr)) === nr && norm(t.farbe || '') === norm(row.farbe || ''))
+    || st.teile.find(t => normNr(cleanNr(t.teile_nr)) === nr && nr && norm(t.farbe || '') === norm(row.farbe || ''));
+  const vals = { teile_nr: set.set_nummer, beschreibung: row.beschreibung || set.name || null, farbe: row.farbe || null, anzahl: row.anzahl, euro: row.euro, kiste_id: row.kiste_id };
+  let saved;
+  if (part) {
+    const u = {}; for (const [k, v] of Object.entries(vals)) if (v != null && v !== '' && k !== 'teile_nr' && String(v) !== String(part[k] ?? '')) u[k] = v;
+    saved = part;
+    if (Object.keys(u).length) { const r = await sb.from(cfg.partTable).update(u).eq('id', part.id).select().single(); if (r.error) throw r.error; saved = { ...part, ...r.data }; }
+  } else {
+    const r = await sb.from(cfg.partTable).insert({ ...vals, anzahl: vals.anzahl ?? 1, user_id: owner() }).select().single(); if (r.error) throw r.error; saved = { ...r.data, [cfg.rel]: [] };
+  }
+  const rel = [...(saved[cfg.rel] || part?.[cfg.rel] || [])];
+  if (!rel.some(x => x.set_id === set.id)) { const l = await sb.from(cfg.link).insert({ teil_id: saved.id, set_id: set.id, user_id: owner() }); if (l.error) throw l.error; rel.push({ set_id: set.id }); }
+  saved[cfg.rel] = rel;
+  st.teile = part ? st.teile.map(x => x.id === saved.id ? saved : x) : [saved, ...st.teile];
+  return saved;
+}
 /** Auswahlliste mit zwei Gruppen (Reserve / Sets) */
 function setOptions(list, lego, selected) {
   return ['reserve', 'set'].map(a => { const l = list.filter(s => setArt(s) === a); return l.length
     ? `<optgroup label="${artIcon(a)} ${esc(artName(a, lego))}">${l.map(s => `<option value="${s.id}" ${String(s.id) === String(selected ?? '') ? 'selected' : ''}>${esc(setLabel(s))}</option>`).join('')}</optgroup>` : ''; }).join('');
 }
 const findDupSet = (cfg, art, nummer, exceptId) => { const n = normNr(nummer); return n ? cfg.list().find(x => x.id !== exceptId && setArt(x) === art && normNr(x.set_nummer) === n) : null; };
-/** Kachel des vorhandenen Eintrags zeigen und fragen, ob überschrieben werden soll */
-function askOverwrite(cfg, dup, row) {
+/** Kachel des vorhandenen Eintrags zeigen und fragen, was passieren soll.
+ *  Antwort: 'update' | 'link' (nur im Teil-Formular) | 'open' (nur ohne Teil) | null (Abbrechen) */
+function askOverwrite(cfg, dup, row, opts = {}) {
   return new Promise(resolve => {
     const art = setArt(dup);
     const d = document.createElement('dialog'); d.className = 'dupdlg';
-    d.innerHTML = `<h2 style="margin-top:0">Schon vorhanden – überschreiben?</h2>
+    d.innerHTML = `<h2 style="margin-top:0">Schon vorhanden – was tun?</h2>
       <p style="margin-top:0">In „${esc(artName(art, cfg.lego))}“ gibt es die Nummer <b>${esc(dup.set_nummer)}</b> schon:</p>
       <div class="list"><div class="item" data-dup>${thumb(dup, artIcon(art))}
         <div class="info"><div class="title">${esc(dup.set_nummer)} ${esc(dup.name || '')}</div>
         <div class="sub">${num(cfg.countTeile(dup))} Teile zugeordnet${imgList(dup).length ? ' · ' + num(imgList(dup).length) + ' Foto(s)' : ''}</div></div></div></div>
-      <p>Bei „Ja“ werden nur <b>Nummer</b> und <b>Name</b> übernommen:<br>
+      <p style="margin-bottom:.3rem"><b>Aktualisieren</b> übernimmt nur <b>Nummer</b> und <b>Name</b>:<br>
         <span class="muted">${esc(dup.set_nummer)} ${esc(dup.name || '')}</span> → <b>${esc(row.set_nummer)} ${esc(row.name || dup.name || '')}</b><br>
-        <span class="muted" style="font-size:.85rem">Fotos, Notiz und zugeordnete Teile bleiben wie sie sind.</span></p>
-      <div class="row"><button class="btn grow" type="button" data-yes>Ja, überschreiben</button><button class="btn secondary grow" type="button" data-no>Nein, zurück</button></div>`;
+        <span class="muted" style="font-size:.85rem">Fotos, Notiz und alle schon zugeordneten Teile bleiben erhalten${opts.fromPart ? ' – dieses Teil wird zusätzlich zugeordnet' : ''}.</span></p>
+      ${opts.fromPart ? `<p class="muted" style="font-size:.85rem;margin-top:0"><b>Diesem Teil zuordnen</b> lässt den vorhandenen Eintrag unverändert und wählt ihn nur für dieses Teil aus.</p>` : ''}
+      <div class="row" style="flex-wrap:wrap"><button class="btn grow" type="button" data-yes>Aktualisieren</button>
+        ${opts.fromPart ? `<button class="btn grow" type="button" data-link>Diesem Teil zuordnen</button>` : `<button class="btn secondary grow" type="button" data-open>Vorhandenes öffnen</button>`}
+        <button class="btn secondary grow" type="button" data-no>Abbrechen</button></div>`;
     document.body.appendChild(d); d.showModal();
-    let ans = false;
-    d.querySelector('[data-yes]').onclick = () => { ans = true; d.close(); };
+    let ans = null;
+    const pick = v => () => { ans = v; d.close(); };
+    d.querySelector('[data-yes]').onclick = pick('update');
+    d.querySelector('[data-link]')?.addEventListener('click', pick('link'));
+    d.querySelector('[data-open]')?.addEventListener('click', pick('open'));
     d.querySelector('[data-no]').onclick = () => d.close();
     d.addEventListener('close', () => { d.remove(); resolve(ans); });
   });
@@ -754,13 +831,22 @@ async function overwriteSet(cfg, dup, row) {
   toast('Nummer und Name aktualisiert ✔');
   return r.data;
 }
-function setDialog(s, art) { return setDialogX(SETCFG.pm, s, art); }
-function setDialogX(cfg, s, art = 'reserve') {
+function setDialog(s, art, opts) { return setDialogX(SETCFG.pm, s, art, opts); }
+function setDialogX(cfg, s, art = 'reserve', opts = {}) {
   art = s ? setArt(s) : (art === 'set' ? 'set' : 'reserve');
   const nm = artName(art, cfg.lego);
+  const fromPart = !!opts.fromPart;
+  const kOpts = sel => `<option value="">– keine –</option>` + cfg.kisten().map(k => `<option value="${k.id}" ${String(k.id) === String(sel ?? '') ? 'selected' : ''}>${esc(kisteLabel(k))}</option>`).join('');
   const p = dialog(`<form><h2 style="margin-top:0">${artIcon(art)} ${s ? 'Bearbeiten' : 'Neu'} – ${esc(nm)}</h2>
+    ${fromPart ? `<p class="muted" style="margin-top:0">Wird gleich dem Teil im Formular zugeordnet. Das Teil selbst (mit Kiste, Anzahl, Preis) bitte danach wie gewohnt speichern.</p>` : ''}
     <label>Nummer</label><input name="set_nummer" required value="${esc(s?.set_nummer)}" placeholder="${cfg.lego ? 'z.B. 75192' : 'z.B. 3666'}" autocomplete="off">
     <label>Name</label><input name="name" value="${esc(s?.name)}" placeholder="${cfg.lego ? 'z.B. Millennium Falcon' : 'z.B. Ritterburg'}">
+    ${fromPart ? '' : `<div class="grid2"><div><label>Farbe</label><input name="farbe" value="${esc(s?.farbe)}" placeholder="z.B. rot"></div>
+      <div><label>Anzahl</label><input name="anzahl" type="number" min="0" step="1" inputmode="numeric" value="${esc(s?.anzahl ?? '')}"></div></div>
+    <label>Beschreibung</label><input name="beschreibung" value="${esc(s?.beschreibung)}" placeholder="z.B. komplett mit Anleitung">
+    <div class="grid2"><div><label>Einzelpreis (€ / Stück)</label><input name="euro" inputmode="decimal" value="${s?.euro != null ? esc(String(s.euro).replace('.', ',')) : ''}" placeholder="0,00"></div>
+      <div><label>In Kiste / Tüte</label><select name="kiste_id">${kOpts(s?.kiste_id)}</select></div></div>
+    <p class="muted" style="font-size:.85rem;margin:.3rem 0 0">Mit Kiste, Anzahl, Preis, Farbe oder Beschreibung wird der Eintrag auch unter „Teile“ geführt (ohne doppelt anzulegen).</p>`}
     ${cfg.lego ? `<div class="grid2"><div><label>Jahr</label><input name="jahr" inputmode="numeric" value="${esc(s?.jahr ?? '')}"></div>
       <div><label>Teile (laut Anleitung)</label><input name="teile_anzahl" inputmode="numeric" value="${esc(s?.teile_anzahl ?? '')}"></div></div>` : ''}
     <label>Notiz</label><textarea name="notiz">${esc(s?.notiz)}</textarea>
@@ -769,15 +855,22 @@ function setDialogX(cfg, s, art = 'reserve') {
   const gal = galleryEditor('sgal', imgList(s));
   dialog.current._save = async d => {
     const f = d.querySelector('form');
-    const row = formVals(f, cfg.lego ? ['set_nummer', 'name', 'notiz', 'jahr', 'teile_anzahl'] : ['set_nummer', 'name', 'notiz']);
+    const row = formVals(f, (cfg.lego ? ['set_nummer', 'name', 'notiz', 'jahr', 'teile_anzahl'] : ['set_nummer', 'name', 'notiz']).concat(fromPart ? [] : SET_PART_FIELDS));
+    if (!fromPart) {
+      if (row.anzahl != null) { const n = parseInt(row.anzahl, 10); if (Number.isNaN(n) || n < 0) throw new Error('Bitte bei „Anzahl“ eine Zahl eingeben.'); row.anzahl = n; }
+      row.euro = parseDec(row.euro);
+      row.kiste_id = row.kiste_id ? Number(row.kiste_id) : null;
+    } else if (opts.kiste_id && !s) row.kiste_id = Number(opts.kiste_id);
     if (cfg.lego) for (const k of ['jahr', 'teile_anzahl']) { if (row[k] != null) { const n = parseInt(row[k], 10); if (Number.isNaN(n)) throw new Error('Bitte bei „' + (k === 'jahr' ? 'Jahr' : 'Teile') + '“ eine Zahl eingeben.'); row[k] = n; } }
     const dup = findDupSet(cfg, art, row.set_nummer, s?.id);
     if (dup && s) throw new Error('Diese Nummer gibt es in „' + nm + '“ schon (' + setLabel(dup) + ').');
     if (dup) {
-      if (!(await askOverwrite(cfg, dup, row))) return dialog.KEEP;
-      const res = await overwriteSet(cfg, dup, row);
+      const ans = await askOverwrite(cfg, dup, row, { fromPart });
+      if (!ans) return dialog.KEEP;
       await gal.rollback();
-      return res;
+      if (ans === 'open') { setTimeout(() => { location.hash = cfg.href(dup.id); }, 0); return null; }
+      if (ans === 'link') { toast('„' + setLabel(dup) + '“ ausgewählt – bitte das Teil speichern'); return dup; }
+      return await overwriteSet(cfg, dup, row);
     }
     row.bilder = await gal.commit(cfg.folder);
     let r;
@@ -792,7 +885,8 @@ function setDialogX(cfg, s, art = 'reserve') {
     }
     await gal.cleanup();
     cfg.put((s ? cfg.list().map(x => x.id === s.id ? r.data : x) : [...cfg.list(), r.data]).sort((a, b) => sortNat(a.set_nummer, b.set_nummer)));
-    toast('Gespeichert ✔'); return r.data;
+    if (!fromPart && setHasPartInfo(row)) { try { await ensurePartForSet(cfg, r.data, row); } catch (e) { fail(e); } }
+    toast(fromPart ? 'Angelegt und zugeordnet – bitte das Teil noch speichern.' : 'Gespeichert ✔', fromPart ? 4500 : 2500); return r.data;
   };
   return p;
 }
@@ -806,7 +900,7 @@ function viewKisten() {
     <div class="row noprint" style="margin-bottom:.8rem"><button class="btn grow" id="nk">＋ Neue Kiste/Tüte</button><a class="btn secondary" href="#etiketten">🏷️ QR-Etiketten</a></div>
     <div class="list">${state.kisten.map(k => { const s = sumTeile(state.teile.filter(t => t.kiste_id === k.id));
       return `<a class="item" href="#kiste/${k.id}"><div class="thumb">${k.art === 'Tüte' ? '🛍️' : '📦'}</div>
-        <div class="info"><div class="title">${esc(k.art)} ${esc(k.nummer)}${k.name ? ' – ' + esc(k.name) : ''}</div>
+        <div class="info"><div class="title">${esc(kisteLabel(k))}</div>
         <div class="sub">${dot(k.farbe)}${esc(k.farbe || '')}${k.ort ? ' · 📍 ' + esc(k.ort) : ''}</div></div>
         <div class="right">${num(s.teile)} Teile<div class="sub">${num(s.stueck)} Stück</div></div></a>`; }).join('') || '<div class="card center muted">Noch keine Kisten angelegt.</div>'}</div>`;
   document.getElementById('nk').onclick = async () => { const k = await kisteDialog(); if (k) location.hash = '#kiste/' + k.id; };
@@ -821,7 +915,7 @@ function viewKiste(id) {
   app.innerHTML = `
     <a class="back" href="#kisten">‹ Alle Kisten</a>
     <div class="card">
-      <h1 style="margin-bottom:.3rem">${k.art === 'Tüte' ? '🛍️' : '📦'} ${esc(k.art)} ${esc(k.nummer)}${k.name ? ' – ' + esc(k.name) : ''}</h1>
+      <h1 style="margin-bottom:.3rem">${k.art === 'Tüte' ? '🛍️' : '📦'} ${esc(kisteLabel(k))}</h1>
       <div class="muted">${k.farbe ? dot(k.farbe) + 'Farbe: ' + esc(k.farbe) : ''}${k.ort ? ' · 📍 ' + esc(k.ort) : ''}</div>
       ${k.notiz ? `<p>${esc(k.notiz)}</p>` : ''}
       <p><span class="badge">${num(s.teile)} Teile</span><span class="badge">${num(s.stueck)} Stück</span><span class="badge green">${euro(s.wert)}</span></p>
@@ -831,7 +925,7 @@ function viewKiste(id) {
         ${nfc ? '<button class="btn small secondary" id="nfc">📲 NFC-Tag beschreiben</button>' : ''}
         <a class="btn small secondary" href="#etiketten/${k.id}">🏷️ QR-Etikett</a>
         <button class="btn small secondary" id="cp">🔗 Link kopieren</button>
-        ${teile.length ? '' : '<button class="btn small danger" id="dk">🗑️ Löschen</button>'}
+        <button class="btn small danger" id="dk">🗑️ Löschen</button>
       </div>
       <p class="muted" style="font-size:.85rem;margin-bottom:0">Link für NFC-Aufkleber: <code style="word-break:break-all">${esc(kisteUrl(k.id))}</code></p>
     </div>
@@ -839,7 +933,7 @@ function viewKiste(id) {
   document.getElementById('ek').onclick = async () => { if (await kisteDialog(k)) route(); };
   document.getElementById('cp').onclick = async () => { try { await navigator.clipboard.writeText(kisteUrl(k.id)); toast('Link kopiert ✔'); } catch { prompt('Link kopieren:', kisteUrl(k.id)); } };
   const dk = document.getElementById('dk');
-  if (dk) dk.onclick = async () => { if (!confirm('Leere Kiste löschen?')) return; const { error } = await sb.from('kisten').delete().eq('id', k.id); if (error) return fail(error); state.kisten = state.kisten.filter(x => x.id !== k.id); location.hash = '#kisten'; };
+  if (dk) dk.onclick = async () => { if (!(await deleteKiste('kisten', 'teile', k, teile, kisteLabel(k)))) return; state.kisten = state.kisten.filter(x => x.id !== k.id); location.hash = '#kisten'; };
   if (nfc) document.getElementById('nfc').onclick = () => writeNfc(kisteUrl(k.id), 'diese Kiste');
 }
 
@@ -883,10 +977,40 @@ function setPhotos(s, teile) {
 }
 function setListItem(s, n, da, href, extra = '', teile = []) {
   const art = setArt(s);
+  const k = s.kiste_id ? (SETCFG[String(href).startsWith('#l/') ? 'lego' : 'pm'].kisten().find(x => x.id === s.kiste_id)) : null;
+  const info = [cleanNr(s.farbe) ? dot(s.farbe) + esc(s.farbe) : '', k ? '📦 ' + esc(kisteLabel(k)) : '', s.beschreibung ? esc(s.beschreibung) : ''].filter(Boolean).join(' · ');
   return `<a class="item" href="${href}">${thumb(setCoverRow(s, teile), artIcon(art))}
     <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
-    <div class="sub">${extra}${num(n)} Teile erfasst</div></div>
-    <div class="right">${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
+    ${info ? `<div class="sub">${info}</div>` : ''}
+    <div class="sub">${extra}${num(n)} Teile erfasst</div>
+    ${priceSubHtml(s.euro, s.anzahl ?? 1)}</div>
+    <div class="right">${s.anzahl != null ? `<b>${num(s.anzahl)}×</b><br>` : ''}${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
+}
+/** Angaben eines Reserve/Set-Eintrags (wie bei Teilen) */
+function setFactsHtml(s, lego) {
+  const k = s.kiste_id ? SETCFG[lego ? 'lego' : 'pm'].kisten().find(x => x.id === s.kiste_id) : null;
+  const rows = [
+    s.beschreibung ? ['Beschreibung', esc(s.beschreibung)] : null,
+    cleanNr(s.farbe) ? ['Farbe', dot(s.farbe) + esc(s.farbe)] : null,
+    s.anzahl != null ? ['Anzahl', num(s.anzahl)] : null,
+    s.euro != null ? ['Preis', esc(priceLine(s.euro, s.anzahl ?? 1))] : null,
+    k ? ['In Kiste', `<a href="${lego ? '#l/kiste/' : '#kiste/'}${k.id}">📦 ${esc(kisteLabel(k))}</a>`] : null,
+  ].filter(Boolean);
+  return rows.length ? `<dl class="dl" id="setFacts">${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>` : '';
+}
+/** Reserve & Sets als Tabelle (CSV) */
+function exportSetsCsv(lego) {
+  const cfg = SETCFG[lego ? 'lego' : 'pm'];
+  const head = ['Bereich', 'Nummer', 'Name', 'Beschreibung', 'Farbe', 'Anzahl', 'Einzelpreis', 'Wert gesamt', 'In Kiste', 'Notiz', 'Teile zugeordnet', 'Fotos'].concat(lego ? ['Jahr', 'Teile laut Anleitung'] : []);
+  const cellv = v => { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const dec = n => n == null ? '' : Number(n).toFixed(2).replace('.', ',');
+  const rows = cfg.list().map(s => { const k = s.kiste_id ? cfg.kisten().find(x => x.id === s.kiste_id) : null;
+    return [artName(setArt(s), lego), s.set_nummer, s.name, s.beschreibung, s.farbe, s.anzahl, dec(s.euro), s.euro != null ? dec(s.euro * (s.anzahl ?? 1)) : '', k ? kisteLabel(k) : '', s.notiz, cfg.countTeile(s), imgList(s).length || ''].concat(lego ? [s.jahr, s.teile_anzahl] : []); });
+  const csv = '\ufeff' + [head, ...rows].map(r => r.map(cellv).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `${lego ? 'lego' : 'playmobil'}-reserve-sets-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 function viewSets(art = 'reserve') {
   const nm = artName(art);
@@ -911,6 +1035,7 @@ function viewSet(id) {
     <div class="card">
       ${setPhotos(s, teile)}
       <h1 style="margin-bottom:.3rem">${artIcon(art)} ${esc(s.set_nummer)} ${esc(s.name || '')}</h1>
+      ${setFactsHtml(s, false)}
       ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
       <p><span class="badge green">${da.length} Teile vorhanden</span>${fehlt.length ? `<span class="badge red">${fehlt.length} fehlen</span>` : ''}<span class="badge">${num(sum.stueck)} Stück</span><span class="badge">${euro(sum.wert)}</span></p>
       <div class="row"><a class="btn small" href="#teil/neu?set=${s.id}">＋ Teil zuordnen</a><button class="btn small secondary" id="es">✏️ Bearbeiten</button>
@@ -950,10 +1075,13 @@ function viewStats() {
     <h2>Daten übernehmen &amp; sichern</h2>
     <div class="card"><a class="btn block secondary" href="#import">📥 Aus Excel oder Tabelle übernehmen</a>
       <div style="height:.5rem"></div>
-      <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button></div>
+      <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button>
+      <div style="height:.5rem"></div>
+      <button class="btn block secondary" id="csvSets">⬇️ ${esc(artName('reserve'))} &amp; ${esc(artName('set'))} als Tabelle</button></div>
     ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('pm')}</div>`}
     <p class="muted center" style="font-size:.85rem">Angemeldet als ${esc(state.user.email)}</p>`;
   document.getElementById('csv').onclick = exportCsv;
+  document.getElementById('csvSets').onclick = () => exportSetsCsv(false);
   bindRenameTabs();
 }
 

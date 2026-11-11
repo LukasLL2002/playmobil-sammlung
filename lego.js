@@ -1,13 +1,31 @@
 // LEGO-Sammlung (analog Playmobil) + optionale Rebrickable-Suche
 'use strict';
 
-const lstate = { loaded: false, kisten: [], sets: [], teile: [], filter: { q: '', farbe: '', kiste: '', set: '' } };
+const lstate = { loaded: false, kisten: [], sets: [], teile: [], filter: { q: '', farbe: '', kiste: '', set: '', nr: '' } };
 const lkisteById = id => lstate.kisten.find(k => k.id === Number(id));
 const lsetById = id => lstate.sets.find(s => s.id === Number(id));
-const lkisteLabel = k => k ? `${k.art} ${k.nummer}${k.name ? ' – ' + k.name : ''}` : '';
+const lkisteLabel = k => kisteLabel(k);
 const lsetLabel = s => s ? `${s.set_nummer}${s.name ? ' ' + s.name : ''}` : '';
 const lteilSets = t => (t.lego_teil_sets || []).map(x => lsetById(x.set_id)).filter(Boolean);
-const lteilTitle = t => t.beschreibung || (t.teile_nr ? 'Teil ' + t.teile_nr : 'Ohne Beschreibung');
+const lteilTitle = t => t.beschreibung || (hasNr(t) ? 'Teil ' + t.teile_nr : 'Ohne Beschreibung');
+/** LEGO-Kiste anlegen/bearbeiten (Nummer freiwillig, freier Text) */
+function lKisteDialog(k) {
+  const p = dialog(`<form><h2 style="margin-top:0">${k ? 'Kiste bearbeiten' : 'Neue Kiste / Tüte'}</h2>
+    <div class="grid2"><div><label>Art</label><select name="art"><option ${k?.art !== 'Tüte' ? 'selected' : ''}>Kiste</option><option ${k?.art === 'Tüte' ? 'selected' : ''}>Tüte</option></select></div>
+    <div><label>Nummer <span class="muted" style="font-weight:400">(freiwillig)</span></label><input name="nummer" value="${esc(k?.nummer ?? '')}" placeholder="z.B. ${lstate.kisten.length + 1}, A-G oder leer" autocomplete="off"></div></div>
+    <label>Name</label><input name="name" value="${esc(k?.name ?? '')}" placeholder="z.B. Steine rot">
+    <label>Ort</label><input name="ort" value="${esc(k?.ort ?? '')}" placeholder="z.B. Regal 2">
+    <div class="row" style="margin-top:1rem"><button class="btn grow" type="submit">Speichern</button><button class="btn secondary" type="button" data-cancel>Abbrechen</button></div></form>`);
+  dialog.current._save = async d => {
+    const row = formVals(d.querySelector('form'), ['art', 'nummer', 'name', 'ort']);
+    if (row.nummer && lstate.kisten.some(x => x.id !== k?.id && (x.art || 'Kiste') === row.art && kisteNrKey(x.nummer) === kisteNrKey(row.nummer))) throw new Error(`${row.art} ${row.nummer} gibt es schon. Bitte eine andere Nummer wählen oder leer lassen.`);
+    const r = k ? await sb.from('lego_kisten').update(row).eq('id', k.id).select().single() : await sb.from('lego_kisten').insert({ ...row, user_id: owner() }).select().single();
+    if (r.error) { if (String(r.error.code) === '23505') throw new Error('Diese Nummer gibt es schon. Bitte eine andere wählen oder leer lassen.'); throw r.error; }
+    lstate.kisten = (k ? lstate.kisten.map(x => x.id === k.id ? r.data : x) : [...lstate.kisten, r.data]).sort((a, b) => sortNat(a.nummer, b.nummer));
+    toast('Kiste gespeichert ✔'); return r.data;
+  };
+  return p;
+}
 const rebrickableKey = () => localStorage.getItem('rebrickableKey') || '';
 
 async function loadLego() {
@@ -51,6 +69,8 @@ function lMatches(t, f) {
   if (f.farbe && norm(t.farbe) !== norm(f.farbe)) return false;
   if (f.kiste && String(t.kiste_id) !== f.kiste && !(f.kiste === 'none' && !t.kiste_id)) return false;
   if (f.set && !(t.lego_teil_sets || []).some(x => String(x.set_id) === f.set)) return false;
+  if (f.nr === 'ohne' && hasNr(t)) return false;
+  if (f.nr === 'mit' && !hasNr(t)) return false;
   if (!f.q) return true;
   const hay = norm([t.teile_nr, t.farbe, t.beschreibung, t.notiz, lkisteLabel(lkisteById(t.kiste_id)), ...lteilSets(t).map(lsetLabel)].join(' '));
   return norm(f.q).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
@@ -65,6 +85,11 @@ function lTeile() {
       <select id="fFarbe"><option value="">Alle Farben</option>${farben.map(x => `<option ${x === f.farbe ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="fKiste"><option value="">Alle Kisten</option><option value="none" ${f.kiste === 'none' ? 'selected' : ''}>Ohne Kiste</option>${lstate.kisten.map(k => `<option value="${k.id}" ${String(k.id) === f.kiste ? 'selected' : ''}>${esc(lkisteLabel(k))}</option>`).join('')}</select>
       <select id="fSet"><option value="">Alle ${esc(artName('reserve', true))} &amp; ${esc(artName('set', true))}</option>${setOptions(lstate.sets, true, f.set)}</select>
+      <select id="fNr"><option value="">Alle Nummern</option><option value="mit" ${f.nr === 'mit' ? 'selected' : ''}>Mit Nummer</option><option value="ohne" ${f.nr === 'ohne' ? 'selected' : ''}>Ohne Nummer</option></select>
+    </div>
+    <div class="row" style="margin:.4rem 0 .6rem;gap:.4rem;flex-wrap:wrap">
+      <a class="btn small" href="#l/teil/neu" style="background:#f9a825;color:#111">＋ Teil</a>
+      <a class="btn small secondary" href="#l/import" id="impTeile">📥 Aus Excel übernehmen</a>
     </div>
     <div id="count" class="muted" style="margin-bottom:.5rem"></div>
     <div id="list" class="list"></div>
@@ -77,7 +102,7 @@ function lTeile() {
       const k = lkisteById(t.kiste_id);
       return `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}
         <div class="info"><div class="title">${esc(lteilTitle(t))}</div>
-        <div class="sub">${t.teile_nr ? esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}${k ? ' · 📦 ' + esc(lkisteLabel(k)) : ''}</div>
+        <div class="sub">${hasNr(t) ? esc(t.teile_nr) + ' · ' : NR_BADGE + ' '}${cleanNr(t.farbe) ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}${k ? ' · 📦 ' + esc(lkisteLabel(k)) : ''}</div>
         <div class="sub">${lteilSets(t).map(s => artIcon(setArt(s)) + ' ' + esc(lsetLabel(s))).join(' · ')}</div>
         ${priceSubHtml(t.euro, t.anzahl)}</div>
         <div class="right"><b>${num(t.anzahl)}×</b></div></a>`;
@@ -88,6 +113,7 @@ function lTeile() {
   document.getElementById('fFarbe').onchange = e => { f.farbe = e.target.value; render(); };
   document.getElementById('fKiste').onchange = e => { f.kiste = e.target.value; render(); };
   document.getElementById('fSet').onchange = e => { f.set = e.target.value; render(); };
+  document.getElementById('fNr').onchange = e => { f.nr = e.target.value; render(); };
   render();
 }
 
@@ -104,7 +130,7 @@ function lTeil(id) {
     app.innerHTML = `
       <a class="back" href="#l/teile">‹ Alle Teile</a>
       <div class="card">${photoStrip(t)}<h1 style="margin-top:.4rem">${esc(lteilTitle(t))}</h1>
-        <p>${t.teile_nr ? '<b>Nr.</b> ' + esc(t.teile_nr) + ' · ' : ''}${t.farbe ? dot(t.farbe) + ' ' + esc(t.farbe) : ''}</p>
+        <p>${hasNr(t) ? '<b>Nr.</b> ' + esc(t.teile_nr) : 'Keine Nummer gefunden'}${t.farbe ? ' · ' + dot(t.farbe) + ' ' + esc(t.farbe) : ''}</p>
         <p>${k ? '📦 <a href="#l/kiste/' + k.id + '">' + esc(lkisteLabel(k)) + '</a>' : 'Ohne Kiste'} · <b>${num(t.anzahl)}×</b></p>
         ${t.euro != null ? `<p class="price">${esc(priceLine(t.euro, t.anzahl))}</p>` : ''}
         ${sets.length ? `<p>${sets.map(s => `<a class="badge" href="#l/set/${s.id}">${artIcon(setArt(s))} ${esc(lsetLabel(s))}</a>`).join(' ')}</p>` : ''}
@@ -126,7 +152,7 @@ function lTeil(id) {
     <a class="back" href="${isNew ? '#l/teile' : '#l/teil/' + t.id}">‹ Zurück</a>
     <h1>${isNew ? 'Neues LEGO-Teil' : 'LEGO-Teil bearbeiten'}</h1>
     <form id="f" class="card">
-      <div class="grid2"><div><label>Teile-Nr.</label><input id="nr" value="${esc(t.teile_nr)}"></div>
+      <div class="grid2"><div>${nrFieldHtml(t)}</div>
         <div><label>Farbe</label><input id="farbe" value="${esc(t.farbe)}"></div></div>
       <label>Beschreibung</label><input id="bes" value="${esc(t.beschreibung)}">
       <div class="grid2"><div><label>Anzahl</label><input id="anz" inputmode="numeric" value="${t.anzahl ?? 1}"></div>
@@ -147,13 +173,10 @@ function lTeil(id) {
   };
   fillK(t.kiste_id); fillS(); renderTags();
   sSel.onchange = () => { if (sSel.value) { chosenSets.push(Number(sSel.value)); renderTags(); fillS(); } };
-  document.getElementById('nk').onclick = async () => {
-    const nummer = prompt('Kisten-Nummer:'); if (!nummer) return;
-    const { data, error } = await sb.from('lego_kisten').insert({ nummer, art: 'Kiste', user_id: owner() }).select().single();
-    if (error) return fail(error); lstate.kisten = [...lstate.kisten, data].sort((a, b) => sortNat(a.nummer, b.nummer)); fillK(data.id);
-  };
+  document.getElementById('nk').onclick = async () => { const k = await lKisteDialog(); if (k) fillK(k.id); };
+  bindNrField('lego', () => document.getElementById('bes').value.trim());
   const gal = galleryEditor('lgal', imgList(t));
-  const addNewSet = async art => { const s = await setDialogX(SETCFG.lego, null, art); if (s && !chosenSets.includes(s.id)) chosenSets.push(s.id); renderTags(); fillS(); };
+  const addNewSet = async art => { const s = await setDialogX(SETCFG.lego, null, art, { fromPart: true, kiste_id: kSel.value || null }); if (s && !chosenSets.includes(s.id)) chosenSets.push(s.id); renderTags(); fillS(); };
   document.getElementById('newRes').onclick = () => addNewSet('reserve');
   document.getElementById('newSet').onclick = () => addNewSet('set');
   const updEurPrev = () => {
@@ -171,7 +194,7 @@ function lTeil(id) {
     e.preventDefault();
     try {
       const row = {
-        teile_nr: document.getElementById('nr').value.trim() || null,
+        ...nrValues(),
         farbe: document.getElementById('farbe').value.trim() || null,
         beschreibung: document.getElementById('bes').value.trim() || null,
         anzahl: Math.max(0, parseInt(document.getElementById('anz').value, 10) || 0),
@@ -205,11 +228,7 @@ function lKisten() {
         <div class="sub">${k.ort ? '📍 ' + esc(k.ort) : ''}</div></div><div class="right"><b>${num(teile.length)}</b><small>${num(st)} St.</small></div></a>`;
     }).join('') || '<div class="card center muted">Noch keine Kisten.</div>'}
     </div><button class="fab" id="nk" style="background:#f9a825;color:#111">＋</button>`;
-  document.getElementById('nk').onclick = async () => {
-    const nummer = prompt('Nummer der neuen Kiste:'); if (!nummer) return;
-    const { data, error } = await sb.from('lego_kisten').insert({ nummer, art: 'Kiste', user_id: owner() }).select().single();
-    if (error) return fail(error); lstate.kisten = [...lstate.kisten, data].sort((a, b) => sortNat(a.nummer, b.nummer)); location.hash = '#l/kiste/' + data.id;
-  };
+  document.getElementById('nk').onclick = async () => { const k = await lKisteDialog(); if (k) location.hash = '#l/kiste/' + k.id; };
 }
 function lKiste(id) {
   const k = lkisteById(id);
@@ -218,20 +237,13 @@ function lKiste(id) {
   app.innerHTML = `<a class="back" href="#l/kisten">‹ Alle Kisten</a>
     <div class="card"><h1>📦 ${esc(lkisteLabel(k))}</h1>
       <p class="muted">${k.ort ? '📍 ' + esc(k.ort) : ''} · ${num(teile.length)} Teile</p>
-      <div class="row"><button class="btn small secondary" id="ek">✏️</button><button class="btn small danger" id="dk">🗑️</button></div></div>
+      <div class="row"><button class="btn small secondary" id="ek">✏️ Bearbeiten</button><button class="btn small danger" id="dk">🗑️ Löschen</button></div></div>
     <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div>
-      <div class="sub">${t.teile_nr || ''} ${t.farbe ? '· ' + esc(t.farbe) : ''}</div>${priceSubHtml(t.euro, t.anzahl)}</div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
+      <div class="sub">${hasNr(t) ? esc(t.teile_nr) : NR_BADGE} ${cleanNr(t.farbe) ? '· ' + esc(t.farbe) : ''}</div>${priceSubHtml(t.euro, t.anzahl)}</div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Leer.</div>'}</div>
     <a class="fab" href="#l/teil/neu" style="background:#f9a825;color:#111">＋</a>`;
-  document.getElementById('ek').onclick = async () => {
-    const name = prompt('Name', k.name || ''); if (name == null) return;
-    const ort = prompt('Ort', k.ort || ''); if (ort == null) return;
-    const { data, error } = await sb.from('lego_kisten').update({ name: name || null, ort: ort || null }).eq('id', k.id).select().single();
-    if (error) return fail(error); Object.assign(k, data); lKiste(id);
-  };
+  document.getElementById('ek').onclick = async () => { if (await lKisteDialog(k)) lKiste(id); };
   document.getElementById('dk').onclick = async () => {
-    if (teile.length) return toast('Kiste ist nicht leer.');
-    if (!confirm('Leere Kiste löschen?')) return;
-    const { error } = await sb.from('lego_kisten').delete().eq('id', k.id); if (error) return fail(error);
+    if (!(await deleteKiste('lego_kisten', 'lego_teile', k, teile, lkisteLabel(k)))) return;
     lstate.kisten = lstate.kisten.filter(x => x.id !== k.id); location.hash = '#l/kisten';
   };
 }
@@ -257,6 +269,7 @@ function lSet(id) {
   app.innerHTML = `<a class="back" href="${back}">‹ ${esc(artName(art, true))}</a>
     <div class="card">${setPhotos(s, teile)}<h1>${artIcon(art)} ${esc(lsetLabel(s))}</h1>
       <p class="muted">${s.jahr || ''}${s.teile_anzahl ? ' · ' + num(s.teile_anzahl) + ' Teile laut Anleitung' : ''}</p>
+      ${setFactsHtml(s, true)}
       ${s.notiz ? `<p>${esc(s.notiz)}</p>` : ''}
       <div class="row"><button class="btn small secondary" id="es">✏️ Bearbeiten</button><button class="btn small danger" id="ds">🗑️ Löschen</button></div></div>
     <div class="list">${teile.map(t => `<a class="card item" href="#l/teil/${t.id}">${thumb(t)}<div class="info"><div class="title">${esc(lteilTitle(t))}</div>${priceSubHtml(t.euro, t.anzahl)}</div><div class="right"><b>${num(t.anzahl)}×</b></div></a>`).join('') || '<div class="card center muted">Keine Teile verknüpft.</div>'}</div>`;
@@ -283,9 +296,12 @@ function lStats() {
       <div style="height:.5rem"></div>
       <button class="btn block secondary" id="exp">📤 Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
+      <button class="btn block secondary" id="expSets">📤 ${esc(artName('reserve', true))} &amp; ${esc(artName('set', true))} als Tabelle</button>
+      <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#l/rebrickable">🔑 Rebrickable-Einstellungen</a></div>
     ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('lego')}</div>`}`;
   bindRenameTabs();
+  document.getElementById('expSets').onclick = () => exportSetsCsv(true);
   document.getElementById('exp').onclick = () => {
     const head = ['teile_nr', 'farbe', 'beschreibung', 'anzahl', 'euro', 'kiste_nummer', 'kiste_art', 'set_nummern', 'notiz'];
     const rows = lstate.teile.map(t => {
@@ -339,7 +355,9 @@ async function lRebrickable(art = 'reserve') {
         const row = { set_nummer: b.dataset.num, name: b.dataset.name || null };
         const existing = findDupSet(SETCFG.lego, art, row.set_nummer);
         if (existing) {
-          if (!(await askOverwrite(SETCFG.lego, existing, row))) return;
+          const ans = await askOverwrite(SETCFG.lego, existing, row);
+          if (!ans) return;
+          if (ans === 'open') { location.hash = '#l/set/' + existing.id; return; }
           try { const u = await overwriteSet(SETCFG.lego, existing, row); location.hash = '#l/set/' + u.id; } catch (e) { fail(e); }
           return;
         }
