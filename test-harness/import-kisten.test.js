@@ -15,6 +15,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await ctx.route('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/**', r => r.fulfill({ contentType: 'text/javascript', body: XLSXJS }));
   const net = [];
   await ctx.route('https://rebrickable.com/api/v3/lego/parts/**', r => { net.push(r.request().url()); r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: [{ part_num: '3001', name: 'Brick 2 x 4', part_img_url: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }] }) }); });
+  await ctx.route('https://rebrickable.com/api/v3/lego/parts/*/colors/**', r => { net.push(r.request().url()); r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: [{ color_name: 'White', num_sets: 80 }, { color_name: 'Red', num_sets: 120 }] }) }); });
   await ctx.route('https://api.brickognize.com/**', r => { net.push(r.request().url()); r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ items: [{ id: '3003', name: 'Brick 2 x 2', img_url: '', score: 0.93 }] }) }); });
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
@@ -122,12 +123,27 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await page.setInputFiles('.psdlg #psFile', '/tmp/img-red.png'); await page.waitForSelector('.psdlg [data-pick]');
   const ocrSug = await page.$$eval('.psdlg .psitem .title', a => a.map(x => x.textContent));
   ok('PM photo search reads printed number (OCR)', ocrSug.includes('30 00 1234'), ocrSug);
+  ok('PM photo: OCR number looked up on Klickypedia (name, sets, source link)', (await page.textContent('.psdlg')).includes('Schild rot') && (await page.$$eval('.psdlg .psitem a', a => a.map(x => x.href))).some(h => h.includes('klickypedia.com/parts/30001234')));
   await page.click('.psdlg #psClose');
+  // Beschreibung → Klickypedia mit Infos, Übernehmen füllt Nummer/Name/Farbe
+  await go('#kisten'); await go('#teil/neu'); await page.click('#nrSearch'); await page.waitForSelector('.psdlg');
+  await page.fill('.psdlg #psq', 'Topfhelm'); await page.click('.psdlg #psGo'); await page.waitForSelector('.psdlg [data-pick]');
+  const kTxt = (await page.textContent('.psdlg #psRes')).replace(/\s+/g, ' ');
+  d = await db();
+  ok('PM description search: Klickypedia suggestion with colour, sets, price, source', kTxt.includes('30 21 7962') && kTxt.includes('Topfhelm-Raubritter') && kTxt.includes('metallic') && kTxt.includes('In 4 Sets') && kTxt.includes('0,40') && kTxt.includes('Klickypedia ↗') && d.fn.some(f => f.name === 'teilsuche' && f.q === 'Topfhelm'), kTxt.slice(0, 300));
+  await page.click('.psdlg [data-pick="0"]'); await page.waitForTimeout(200);
+  ok('pick fills number, name, colour – not saved', (await page.inputValue('#nr')) === '30 21 7962' && (await page.inputValue('#beschr')) === 'Topfhelm-Raubritter' && (await page.inputValue('#farbe')) === 'metallic' && page.url().endsWith('#teil/neu'));
+  await page.evaluate(() => { window.__fnError = 'Klickypedia ist gerade nicht erreichbar. Bitte später nochmal versuchen.'; });
+  await page.click('#nrSearch'); await page.fill('.psdlg #psq', 'Helm'); await page.click('.psdlg #psGo'); await page.waitForSelector('.psdlg .pshint');
+  ok('source error shown in German, own results still shown', (await page.textContent('.psdlg .pshint')).includes('nicht erreichbar'));
+  await page.evaluate(() => { window.__fnError = null; }); await page.click('.psdlg #psClose');
   // LEGO
   await page.evaluate(() => localStorage.setItem('rebrickableKey', 'test-key'));
   await go('#l/teil/neu'); await page.fill('#bes', 'Brick'); await page.click('#nrSearch'); await page.waitForSelector('.psdlg [data-pick]');
   const lSug = await page.$$eval('.psdlg .psitem', a => a.map(x => x.textContent.replace(/\s+/g, ' ')));
   ok('LEGO name search: Rebrickable suggestion (mocked)', lSug.some(s => s.includes('3001') && s.includes('Rebrickable')), lSug);
+  await page.click('.psdlg [data-more]'); await page.waitForFunction(() => document.querySelector('.psdlg').textContent.includes('Farben:'));
+  ok('LEGO: colours & sets loaded on demand', (await page.textContent('.psdlg')).includes('Red (120 Sets)'));
   await page.setInputFiles('.psdlg #psFile', '/tmp/img-red.png'); await page.waitForFunction(() => document.querySelector('.psdlg')?.textContent.includes('3003'));
   ok('LEGO photo search: Brickognize suggestion (mocked)', (await page.textContent('.psdlg')).includes('93 % sicher') && net.some(u => u.includes('brickognize')));
   await page.click('.psdlg [data-pick="0"]'); ok('LEGO pick fills number', (await page.inputValue('#nr')) === '3003');
@@ -159,20 +175,19 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   d = await db(); const k7 = d.kisten.find(k => k.nummer === '7');
   await go('#reserve'); await page.click('#ns');
   const fields = await page.$$eval('dialog[open] [name]', a => a.map(x => x.name));
-  ok('Reserve form has part fields', ['set_nummer', 'name', 'farbe', 'anzahl', 'beschreibung', 'euro', 'kiste_id', 'notiz'].every(f => fields.includes(f)), fields);
-  await page.fill('dialog[open] [name=set_nummer]', '9999'); await page.fill('dialog[open] [name=name]', 'Feuerwehr'); await page.fill('dialog[open] [name=farbe]', 'rot');
-  await page.fill('dialog[open] [name=anzahl]', '2'); await page.fill('dialog[open] [name=euro]', '4,50'); await page.selectOption('dialog[open] [name=kiste_id]', String(k7.id));
+  const dlgTxt = await page.textContent('dialog[open]');
+  ok('Reserve form: no Farbe/Anzahl/Preis/Kiste, no "auch unter Teile" hint', ['set_nummer', 'name', 'beschreibung', 'notiz'].every(f => fields.includes(f)) && !['farbe', 'anzahl', 'euro', 'kiste_id'].some(f => fields.includes(f)) && !dlgTxt.includes('auch unter „Teile“'), fields);
+  const teileBefore = (await db()).teile.length;
+  await page.fill('dialog[open] [name=set_nummer]', '9999'); await page.fill('dialog[open] [name=name]', 'Feuerwehr'); await page.fill('dialog[open] [name=beschreibung]', 'mit Anleitung');
   await page.click('dialog[open] button[type=submit]'); await page.waitForTimeout(700);
   d = await db(); const s9 = d.sets.find(s => s.set_nummer === '9999');
-  const p9 = d.teile.filter(t => t.teile_nr === '9999');
-  ok('Reserve saved with part fields', s9 && s9.anzahl === 2 && Number(s9.euro) === 4.5 && s9.kiste_id === k7.id && s9.farbe === 'rot', s9);
-  ok('matching part created in Teile, linked, in Kiste', p9.length === 1 && p9[0].kiste_id === k7.id && p9[0].anzahl === 2 && d.teil_sets.some(x => x.teil_id === p9[0].id && x.set_id === s9.id), p9);
+  ok('Reserve saved (number, name, description only)', s9 && s9.name === 'Feuerwehr' && s9.beschreibung === 'mit Anleitung' && s9.farbe == null && s9.anzahl == null && s9.kiste_id == null, s9);
+  ok('no Teile row auto-created from Reserve', d.teile.length === teileBefore && !d.teile.some(t => t.teile_nr === '9999'));
   await go('#reserve'); const tile = (await page.textContent(`a[href="#set/${s9.id}"]`)).replace(/\s+/g, ' ');
-  ok('Reserve tile shows Kiste + price line', tile.includes('Kiste 7') && tile.includes('4,50 € je Stück · 9,00 € gesamt'), tile.replace(/\s+/g, ' '));
-  await go('#set/' + s9.id); ok('Reserve detail shows Kiste', (await page.textContent('#setFacts')).includes('Kiste 7'));
-  await page.click('#es'); await page.fill('dialog[open] [name=anzahl]', '3'); await page.click('dialog[open] button[type=submit]'); await page.waitForTimeout(600);
-  d = await db(); ok('editing Reserve updates the same part (no duplicate)', d.teile.filter(t => t.teile_nr === '9999').length === 1 && d.teile.find(t => t.teile_nr === '9999').anzahl === 3);
-  await go('#kiste/' + k7.id); ok('part appears in Kiste', (await page.textContent('main')).includes('Feuerwehr'));
+  ok('Reserve tile without price/Kiste/Anzahl', !tile.includes('€') && !tile.includes('Kiste') && tile.includes('mit Anleitung'), tile);
+  await go('#set/' + s9.id); const det = await page.textContent('main');
+  ok('Reserve detail without part fields', !(await page.locator('#setFacts dt', { hasText: 'Farbe' }).count()) && !det.includes('In Kiste') && det.includes('mit Anleitung'));
+  // alte Daten in den Spalten bleiben unangetastet beim Bearbeiten
   // aus dem Teil-Formular heraus
   await go('#teil/neu'); await page.fill('#nr', '55 55 5555'); await page.fill('#beschr', 'Leiter'); await page.fill('#anz', '4'); await page.selectOption('#kiste', String(k7.id));
   await page.click('#newRes'); await page.waitForSelector('dialog[open] [name=set_nummer]');
@@ -182,12 +197,12 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('part form values survive', (await page.inputValue('#nr')) === '55 55 5555' && (await page.inputValue('#anz')) === '4' && (await page.inputValue('#kiste')) === String(k7.id) && page.url().includes('#teil/neu') && (await page.textContent('#chips')).includes('8888'));
   await page.click('#save'); await page.waitForTimeout(700);
   d = await db(); const leiter = d.teile.find(t => t.beschreibung === 'Leiter'); const s8 = d.sets.find(s => s.set_nummer === '8888');
-  ok('part saved in Teile with Kiste, linked to new Reserve; Reserve has Kiste', leiter && leiter.kiste_id === k7.id && leiter.anzahl === 4 && d.teil_sets.some(x => x.teil_id === leiter.id && x.set_id === s8.id) && s8.kiste_id === k7.id && !d.teile.some(t => t.teile_nr === '8888'), { leiter, s8 });
+  ok('part saved in Teile with Kiste, linked to new Reserve; Reserve itself has no Kiste', leiter && leiter.kiste_id === k7.id && leiter.anzahl === 4 && d.teil_sets.some(x => x.teil_id === leiter.id && x.set_id === s8.id) && s8.kiste_id == null && !d.teile.some(t => t.teile_nr === '8888'), { leiter, s8 });
   // Duplikatprüfung bleibt
-  await go('#reserve'); await page.click('#ns'); await page.fill('dialog[open] [name=set_nummer]', '99-99'); await page.fill('dialog[open] [name=name]', 'Neu'); await page.fill('dialog[open] [name=anzahl]', '7');
+  await go('#reserve'); await page.click('#ns'); await page.fill('dialog[open] [name=set_nummer]', '99-99'); await page.fill('dialog[open] [name=name]', 'Neu'); await page.fill('dialog[open] [name=beschreibung]', 'andere Beschreibung');
   await page.click('dialog[open] button[type=submit]'); await page.waitForSelector('.dupdlg[open]'); await page.click('.dupdlg [data-yes]'); await page.waitForTimeout(500);
   d = await db(); const s9b = d.sets.find(s => s.id === s9.id);
-  ok('duplicate overwrite still only number+name', s9b.set_nummer === '99-99' && s9b.name === 'Neu' && s9b.anzahl === 3 && d.sets.filter(s => normNr(s.set_nummer) === '9999').length === 1, s9b);
+  ok('duplicate overwrite still only number+name', s9b.set_nummer === '99-99' && s9b.name === 'Neu' && s9b.beschreibung === 'mit Anleitung' && d.sets.filter(s => normNr(s.set_nummer) === '9999').length === 1, s9b);
   // --- Duplikat: drei Wege (t61u) ---
   const linksOf = (dd, sid) => dd.teil_sets.filter(x => x.set_id === sid).map(x => x.teil_id).sort();
   const linksBefore = linksOf(d, s9.id);
@@ -216,7 +231,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('Aktualisieren: current part gets entry in chips', (await page.textContent('#chips')).includes('9999 Feuerwehr XL'));
   await page.click('#save'); await page.waitForTimeout(700);
   d = await db(); const axt = d.teile.find(t => t.beschreibung === 'Axt'); const s9c = d.sets.find(s => s.id === s9.id);
-  ok('Aktualisieren: number+name updated, all existing links survive, part linked', s9c.set_nummer === '9999' && s9c.name === 'Feuerwehr XL' && s9c.anzahl === 3
+  ok('Aktualisieren: number+name updated, all existing links survive, part linked', s9c.set_nummer === '9999' && s9c.name === 'Feuerwehr XL' && s9c.beschreibung === 'mit Anleitung'
     && links2.every(id => linksOf(d, s9.id).includes(id)) && linksOf(d, s9.id).includes(axt.id) && !d.log.some(l => l.op === 'delete' && l.t === 'teil_sets'), { links2, now: linksOf(d, s9.id) });
   // Reserve-Reiter: Aktualisieren / Vorhandenes öffnen / Abbrechen
   await go('#reserve'); await page.click('#ns'); await page.fill('dialog[open] [name=set_nummer]', '9999');
@@ -236,7 +251,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await go('#uebersicht');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#csvSets')]);
   const csv = fs.readFileSync(await dl.path(), 'utf8');
-  ok('Reserve/Sets export includes new fields', csv.includes('Einzelpreis') && csv.includes('In Kiste') && csv.includes('Kiste 7') && csv.includes('4,50'), csv.split('\n')[0]);
+  ok('Reserve/Sets export: number, name, description – no part columns', csv.includes('Beschreibung') && csv.includes('mit Anleitung') && !csv.includes('Einzelpreis') && !csv.includes('In Kiste'), csv.split('\n')[0]);
 
   ok('no page errors', errs.length === 0, errs);
   fs.writeFileSync(path.join(__dirname, 'import-kisten-result.json'), JSON.stringify({ when: new Date().toISOString(), viewport: '390x844', results }, null, 2));

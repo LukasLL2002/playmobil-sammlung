@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261111-2';
+const ASSET_V = '20261111-3';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -137,7 +137,7 @@ function nrFieldHtml(t) {
   const unk = !!t.nummer_unbekannt || (!!t.teile_nr && !cleanNr(t.teile_nr));
   return `<label for="nr">Teile-Nr.</label><input id="nr" value="${esc(unk ? '' : t.teile_nr)}" inputmode="text" placeholder="z.B. 30 01 2340" ${unk ? 'disabled' : ''}>
     <label class="sheetrow" style="margin:.35rem 0 0;font-weight:400"><input type="checkbox" id="nrUnk" ${unk ? 'checked' : ''}> Keine Nummer gefunden</label>
-    <button type="button" class="btn small secondary" id="nrSearch" style="margin-top:.35rem">🔍 Nummer suchen</button>`;
+    <button type="button" class="btn small secondary" id="nrSearch" style="margin-top:.35rem">🔍 Teil suchen (Foto, Name, Beschreibung)</button>`;
 }
 function bindNrField(kind, getName) {
   const nr = document.getElementById('nr'), unk = document.getElementById('nrUnk');
@@ -145,7 +145,8 @@ function bindNrField(kind, getName) {
   document.getElementById('nrSearch').onclick = () => openPartSearch({ kind, name: getName(), onPick: s => {
     unk.checked = false; nr.disabled = false; nr.value = s.nr || '';
     const b = document.getElementById(kind === 'lego' ? 'bes' : 'beschr'); if (b && !b.value.trim() && s.name) b.value = s.name;
-    toast('Nummer übernommen – bitte noch speichern.');
+    const fb = document.getElementById('farbe'); if (fb && !fb.value.trim() && s.farbe) fb.value = s.farbe;
+    toast('Übernommen – bitte prüfen und speichern.');
   } }).catch(fail);
 }
 const nrValues = () => { const unk = document.getElementById('nrUnk').checked; return { teile_nr: unk ? null : (document.getElementById('nr').value.trim() || null), nummer_unbekannt: unk }; };
@@ -765,30 +766,8 @@ const SETCFG = {
     countTeile: s => lstate.teile.filter(t => (t.lego_teil_sets || []).some(x => x.set_id === s.id)).length,
     st: () => lstate, kisten: () => lstate.kisten, partTable: 'lego_teile', link: 'lego_teil_sets', rel: 'lego_teil_sets' },
 };
-const SET_PART_FIELDS = ['farbe', 'beschreibung', 'anzahl', 'euro', 'kiste_id'];
-const setHasPartInfo = r => SET_PART_FIELDS.some(f => r[f] != null && r[f] !== '');
-/** Reserve/Set mit Teile-Angaben: passendes Teil unter „Teile“ anlegen bzw. ergänzen und verknüpfen (ohne Doppelte) */
-async function ensurePartForSet(cfg, set, row) {
-  const st = cfg.st();
-  const nr = normNr(set.set_nummer);
-  const linked = st.teile.filter(t => (t[cfg.rel] || []).some(x => x.set_id === set.id));
-  let part = linked.find(t => normNr(cleanNr(t.teile_nr)) === nr && norm(t.farbe || '') === norm(row.farbe || ''))
-    || st.teile.find(t => normNr(cleanNr(t.teile_nr)) === nr && nr && norm(t.farbe || '') === norm(row.farbe || ''));
-  const vals = { teile_nr: set.set_nummer, beschreibung: row.beschreibung || set.name || null, farbe: row.farbe || null, anzahl: row.anzahl, euro: row.euro, kiste_id: row.kiste_id };
-  let saved;
-  if (part) {
-    const u = {}; for (const [k, v] of Object.entries(vals)) if (v != null && v !== '' && k !== 'teile_nr' && String(v) !== String(part[k] ?? '')) u[k] = v;
-    saved = part;
-    if (Object.keys(u).length) { const r = await sb.from(cfg.partTable).update(u).eq('id', part.id).select().single(); if (r.error) throw r.error; saved = { ...part, ...r.data }; }
-  } else {
-    const r = await sb.from(cfg.partTable).insert({ ...vals, anzahl: vals.anzahl ?? 1, user_id: owner() }).select().single(); if (r.error) throw r.error; saved = { ...r.data, [cfg.rel]: [] };
-  }
-  const rel = [...(saved[cfg.rel] || part?.[cfg.rel] || [])];
-  if (!rel.some(x => x.set_id === set.id)) { const l = await sb.from(cfg.link).insert({ teil_id: saved.id, set_id: set.id, user_id: owner() }); if (l.error) throw l.error; rel.push({ set_id: set.id }); }
-  saved[cfg.rel] = rel;
-  st.teile = part ? st.teile.map(x => x.id === saved.id ? saved : x) : [saved, ...st.teile];
-  return saved;
-}
+/** Reserve/Sets haben nur Nummer, Name, Beschreibung, Notiz und Fotos (Farbe/Anzahl/Preis/Kiste gehören zu Teilen) */
+const SET_PART_FIELDS = ['beschreibung'];
 /** Auswahlliste mit zwei Gruppen (Reserve / Sets) */
 function setOptions(list, lego, selected) {
   return ['reserve', 'set'].map(a => { const l = list.filter(s => setArt(s) === a); return l.length
@@ -836,17 +815,11 @@ function setDialogX(cfg, s, art = 'reserve', opts = {}) {
   art = s ? setArt(s) : (art === 'set' ? 'set' : 'reserve');
   const nm = artName(art, cfg.lego);
   const fromPart = !!opts.fromPart;
-  const kOpts = sel => `<option value="">– keine –</option>` + cfg.kisten().map(k => `<option value="${k.id}" ${String(k.id) === String(sel ?? '') ? 'selected' : ''}>${esc(kisteLabel(k))}</option>`).join('');
   const p = dialog(`<form><h2 style="margin-top:0">${artIcon(art)} ${s ? 'Bearbeiten' : 'Neu'} – ${esc(nm)}</h2>
     ${fromPart ? `<p class="muted" style="margin-top:0">Wird gleich dem Teil im Formular zugeordnet. Das Teil selbst (mit Kiste, Anzahl, Preis) bitte danach wie gewohnt speichern.</p>` : ''}
     <label>Nummer</label><input name="set_nummer" required value="${esc(s?.set_nummer)}" placeholder="${cfg.lego ? 'z.B. 75192' : 'z.B. 3666'}" autocomplete="off">
     <label>Name</label><input name="name" value="${esc(s?.name)}" placeholder="${cfg.lego ? 'z.B. Millennium Falcon' : 'z.B. Ritterburg'}">
-    ${fromPart ? '' : `<div class="grid2"><div><label>Farbe</label><input name="farbe" value="${esc(s?.farbe)}" placeholder="z.B. rot"></div>
-      <div><label>Anzahl</label><input name="anzahl" type="number" min="0" step="1" inputmode="numeric" value="${esc(s?.anzahl ?? '')}"></div></div>
-    <label>Beschreibung</label><input name="beschreibung" value="${esc(s?.beschreibung)}" placeholder="z.B. komplett mit Anleitung">
-    <div class="grid2"><div><label>Einzelpreis (€ / Stück)</label><input name="euro" inputmode="decimal" value="${s?.euro != null ? esc(String(s.euro).replace('.', ',')) : ''}" placeholder="0,00"></div>
-      <div><label>In Kiste / Tüte</label><select name="kiste_id">${kOpts(s?.kiste_id)}</select></div></div>
-    <p class="muted" style="font-size:.85rem;margin:.3rem 0 0">Mit Kiste, Anzahl, Preis, Farbe oder Beschreibung wird der Eintrag auch unter „Teile“ geführt (ohne doppelt anzulegen).</p>`}
+    ${fromPart ? '' : `<label>Beschreibung</label><input name="beschreibung" value="${esc(s?.beschreibung)}" placeholder="z.B. komplett mit Anleitung">`}
     ${cfg.lego ? `<div class="grid2"><div><label>Jahr</label><input name="jahr" inputmode="numeric" value="${esc(s?.jahr ?? '')}"></div>
       <div><label>Teile (laut Anleitung)</label><input name="teile_anzahl" inputmode="numeric" value="${esc(s?.teile_anzahl ?? '')}"></div></div>` : ''}
     <label>Notiz</label><textarea name="notiz">${esc(s?.notiz)}</textarea>
@@ -856,11 +829,6 @@ function setDialogX(cfg, s, art = 'reserve', opts = {}) {
   dialog.current._save = async d => {
     const f = d.querySelector('form');
     const row = formVals(f, (cfg.lego ? ['set_nummer', 'name', 'notiz', 'jahr', 'teile_anzahl'] : ['set_nummer', 'name', 'notiz']).concat(fromPart ? [] : SET_PART_FIELDS));
-    if (!fromPart) {
-      if (row.anzahl != null) { const n = parseInt(row.anzahl, 10); if (Number.isNaN(n) || n < 0) throw new Error('Bitte bei „Anzahl“ eine Zahl eingeben.'); row.anzahl = n; }
-      row.euro = parseDec(row.euro);
-      row.kiste_id = row.kiste_id ? Number(row.kiste_id) : null;
-    } else if (opts.kiste_id && !s) row.kiste_id = Number(opts.kiste_id);
     if (cfg.lego) for (const k of ['jahr', 'teile_anzahl']) { if (row[k] != null) { const n = parseInt(row[k], 10); if (Number.isNaN(n)) throw new Error('Bitte bei „' + (k === 'jahr' ? 'Jahr' : 'Teile') + '“ eine Zahl eingeben.'); row[k] = n; } }
     const dup = findDupSet(cfg, art, row.set_nummer, s?.id);
     if (dup && s) throw new Error('Diese Nummer gibt es in „' + nm + '“ schon (' + setLabel(dup) + ').');
@@ -885,7 +853,6 @@ function setDialogX(cfg, s, art = 'reserve', opts = {}) {
     }
     await gal.cleanup();
     cfg.put((s ? cfg.list().map(x => x.id === s.id ? r.data : x) : [...cfg.list(), r.data]).sort((a, b) => sortNat(a.set_nummer, b.set_nummer)));
-    if (!fromPart && setHasPartInfo(row)) { try { await ensurePartForSet(cfg, r.data, row); } catch (e) { fail(e); } }
     toast(fromPart ? 'Angelegt und zugeordnet – bitte das Teil noch speichern.' : 'Gespeichert ✔', fromPart ? 4500 : 2500); return r.data;
   };
   return p;
@@ -977,35 +944,23 @@ function setPhotos(s, teile) {
 }
 function setListItem(s, n, da, href, extra = '', teile = []) {
   const art = setArt(s);
-  const k = s.kiste_id ? (SETCFG[String(href).startsWith('#l/') ? 'lego' : 'pm'].kisten().find(x => x.id === s.kiste_id)) : null;
-  const info = [cleanNr(s.farbe) ? dot(s.farbe) + esc(s.farbe) : '', k ? '📦 ' + esc(kisteLabel(k)) : '', s.beschreibung ? esc(s.beschreibung) : ''].filter(Boolean).join(' · ');
   return `<a class="item" href="${href}">${thumb(setCoverRow(s, teile), artIcon(art))}
     <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
-    ${info ? `<div class="sub">${info}</div>` : ''}
-    <div class="sub">${extra}${num(n)} Teile erfasst</div>
-    ${priceSubHtml(s.euro, s.anzahl ?? 1)}</div>
-    <div class="right">${s.anzahl != null ? `<b>${num(s.anzahl)}×</b><br>` : ''}${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
+    ${s.beschreibung ? `<div class="sub">${esc(s.beschreibung)}</div>` : ''}
+    <div class="sub">${extra}${num(n)} Teile erfasst</div></div>
+    <div class="right">${da == null ? `<b>${num(n)}</b>` : `<span class="badge ${da === n ? 'green' : 'red'}">${da}/${n} da</span>`}</div></a>`;
 }
 /** Angaben eines Reserve/Set-Eintrags (wie bei Teilen) */
-function setFactsHtml(s, lego) {
-  const k = s.kiste_id ? SETCFG[lego ? 'lego' : 'pm'].kisten().find(x => x.id === s.kiste_id) : null;
-  const rows = [
-    s.beschreibung ? ['Beschreibung', esc(s.beschreibung)] : null,
-    cleanNr(s.farbe) ? ['Farbe', dot(s.farbe) + esc(s.farbe)] : null,
-    s.anzahl != null ? ['Anzahl', num(s.anzahl)] : null,
-    s.euro != null ? ['Preis', esc(priceLine(s.euro, s.anzahl ?? 1))] : null,
-    k ? ['In Kiste', `<a href="${lego ? '#l/kiste/' : '#kiste/'}${k.id}">📦 ${esc(kisteLabel(k))}</a>`] : null,
-  ].filter(Boolean);
-  return rows.length ? `<dl class="dl" id="setFacts">${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>` : '';
+function setFactsHtml(s) {
+  return s.beschreibung ? `<dl class="dl" id="setFacts"><dt>Beschreibung</dt><dd>${esc(s.beschreibung)}</dd></dl>` : '';
 }
 /** Reserve & Sets als Tabelle (CSV) */
 function exportSetsCsv(lego) {
   const cfg = SETCFG[lego ? 'lego' : 'pm'];
-  const head = ['Bereich', 'Nummer', 'Name', 'Beschreibung', 'Farbe', 'Anzahl', 'Einzelpreis', 'Wert gesamt', 'In Kiste', 'Notiz', 'Teile zugeordnet', 'Fotos'].concat(lego ? ['Jahr', 'Teile laut Anleitung'] : []);
+  const head = ['Bereich', 'Nummer', 'Name', 'Beschreibung', 'Notiz', 'Teile zugeordnet', 'Fotos'].concat(lego ? ['Jahr', 'Teile laut Anleitung'] : []);
   const cellv = v => { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const dec = n => n == null ? '' : Number(n).toFixed(2).replace('.', ',');
-  const rows = cfg.list().map(s => { const k = s.kiste_id ? cfg.kisten().find(x => x.id === s.kiste_id) : null;
-    return [artName(setArt(s), lego), s.set_nummer, s.name, s.beschreibung, s.farbe, s.anzahl, dec(s.euro), s.euro != null ? dec(s.euro * (s.anzahl ?? 1)) : '', k ? kisteLabel(k) : '', s.notiz, cfg.countTeile(s), imgList(s).length || ''].concat(lego ? [s.jahr, s.teile_anzahl] : []); });
+  const rows = cfg.list().map(s => {
+    return [artName(setArt(s), lego), s.set_nummer, s.name, s.beschreibung, s.notiz, cfg.countTeile(s), imgList(s).length || ''].concat(lego ? [s.jahr, s.teile_anzahl] : []); });
   const csv = '\ufeff' + [head, ...rows].map(r => r.map(cellv).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

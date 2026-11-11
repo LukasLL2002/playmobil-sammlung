@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-11T16:11:24.738Z",
+  "when": "2026-11-11T16:31:40.429Z",
   "viewport": "390x844",
   "results": [
     {
@@ -71,7 +71,7 @@
       "pass": true,
       "info": {
         "id": 1008,
-        "created_at": "2026-11-11T16:10:35.271Z",
+        "created_at": "2026-11-11T16:30:50.672Z",
         "teile_nr": null,
         "farbe": "braun",
         "beschreibung": "Bart",
@@ -171,7 +171,7 @@
       "pass": true,
       "info": {
         "id": 1035,
-        "created_at": "2026-11-11T16:10:59.086Z",
+        "created_at": "2026-11-11T16:31:14.487Z",
         "teile_nr": null,
         "nummer_unbekannt": true,
         "farbe": null,
@@ -198,13 +198,13 @@
       "pass": true,
       "info": {
         "pmSug": [
-          "🧩 30 22 11102er SchwertDeine Sammlung Übernehmen",
-          "30 22 1110Schwert · rotDeine Sammlung Übernehmen"
+          "🧩 30 22 1110 2er Schwert Quelle: Deine Sammlung Übernehmen"
         ],
         "links": [
           "https://www.klickypedia.com/?s=Schwert",
           "https://www.google.com/search?q=Playmobil%20Ersatzteil%20Schwert",
-          "https://www.google.com/search?tbm=isch&q=Playmobil%20Schwert"
+          "https://www.google.com/search?tbm=isch&q=Playmobil%20Schwert",
+          "https://lens.google.com/"
         ]
       }
     },
@@ -217,16 +217,38 @@
       "pass": true,
       "info": [
         "30 00 1234",
+        "30 01 2340",
         "1234"
       ]
+    },
+    {
+      "name": "PM photo: OCR number looked up on Klickypedia (name, sets, source link)",
+      "pass": true
+    },
+    {
+      "name": "PM description search: Klickypedia suggestion with colour, sets, price, source",
+      "pass": true,
+      "info": "1 Vorschläge🧩 30 21 7962 Topfhelm-Raubritter · metallic Clothing & Wearable · ca. 0,40 €In 4 Sets: 4868, 4869, 4873 …4868 - Falcon Knights' Ballista4869 - Falcon Knight's Battering Ram4873 - Falcon Knights Troop5240 - Duo Pack Knights' Duel Quelle: Klickypedia ↗ Übernehmen"
+    },
+    {
+      "name": "pick fills number, name, colour – not saved",
+      "pass": true
+    },
+    {
+      "name": "source error shown in German, own results still shown",
+      "pass": true
     },
     {
       "name": "LEGO name search: Rebrickable suggestion (mocked)",
       "pass": true,
       "info": [
-        "🧩 3001Brick 2 x 4 mit einem sehr langen Namen der umbrechen soll · Bright RedDeine Sammlung Übernehmen",
-        " 3001Brick 2 x 4Rebrickable Übernehmen"
+        "🧩 3001 Brick 2 x 4 mit einem sehr langen Namen der umbrechen soll · Bright Red Quelle: Deine Sammlung Übernehmen",
+        " 3001 Brick 2 x 4 Quelle: Rebrickable ↗ · Farben & Sets Übernehmen"
       ]
+    },
+    {
+      "name": "LEGO: colours & sets loaded on demand",
+      "pass": true
     },
     {
       "name": "LEGO photo search: Brickognize suggestion (mocked)",
@@ -245,7 +267,7 @@
       "pass": true,
       "info": {
         "id": 1036,
-        "created_at": "2026-11-11T16:11:02.171Z",
+        "created_at": "2026-11-11T16:31:18.870Z",
         "art": "Kiste",
         "nummer": null,
         "farbe": null,
@@ -292,71 +314,41 @@
       "pass": true
     },
     {
-      "name": "Reserve form has part fields",
+      "name": "Reserve form: no Farbe/Anzahl/Preis/Kiste, no \"auch unter Teile\" hint",
       "pass": true,
       "info": [
         "set_nummer",
         "name",
-        "farbe",
-        "anzahl",
         "beschreibung",
-        "euro",
-        "kiste_id",
         "notiz"
       ]
     },
     {
-      "name": "Reserve saved with part fields",
+      "name": "Reserve saved (number, name, description only)",
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T16:11:08.519Z",
+        "created_at": "2026-11-11T16:31:25.220Z",
         "set_nummer": "9999",
         "name": "Feuerwehr",
         "notiz": null,
-        "farbe": "rot",
-        "beschreibung": null,
-        "anzahl": 2,
-        "euro": 4.5,
-        "kiste_id": 1039,
+        "beschreibung": "mit Anleitung",
         "bilder": [],
         "art": "reserve",
         "user_id": "11111111-1111-1111-1111-111111111111"
       }
     },
     {
-      "name": "matching part created in Teile, linked, in Kiste",
-      "pass": true,
-      "info": [
-        {
-          "id": 1041,
-          "created_at": "2026-11-11T16:11:08.519Z",
-          "teile_nr": "9999",
-          "beschreibung": "Feuerwehr",
-          "farbe": "rot",
-          "anzahl": 2,
-          "euro": 4.5,
-          "kiste_id": 1039,
-          "user_id": "11111111-1111-1111-1111-111111111111",
-          "bilder": []
-        }
-      ]
-    },
-    {
-      "name": "Reserve tile shows Kiste + price line",
-      "pass": true,
-      "info": "🏰 9999 Feuerwehr rot · 📦 Kiste 7 1 Teile erfasst 4,50 € je Stück · 9,00 € gesamt 2×1/1 da"
-    },
-    {
-      "name": "Reserve detail shows Kiste",
+      "name": "no Teile row auto-created from Reserve",
       "pass": true
     },
     {
-      "name": "editing Reserve updates the same part (no duplicate)",
-      "pass": true
+      "name": "Reserve tile without price/Kiste/Anzahl",
+      "pass": true,
+      "info": "🏰 9999 Feuerwehr mit Anleitung 0 Teile erfasst 0/0 da"
     },
     {
-      "name": "part appears in Kiste",
+      "name": "Reserve detail without part fields",
       "pass": true
     },
     {
@@ -368,12 +360,12 @@
       "pass": true
     },
     {
-      "name": "part saved in Teile with Kiste, linked to new Reserve; Reserve has Kiste",
+      "name": "part saved in Teile with Kiste, linked to new Reserve; Reserve itself has no Kiste",
       "pass": true,
       "info": {
         "leiter": {
-          "id": 1044,
-          "created_at": "2026-11-11T16:11:16.618Z",
+          "id": 1042,
+          "created_at": "2026-11-11T16:31:32.254Z",
           "teile_nr": "55 55 5555",
           "nummer_unbekannt": false,
           "farbe": null,
@@ -387,12 +379,11 @@
           "user_id": "11111111-1111-1111-1111-111111111111"
         },
         "s8": {
-          "id": 1043,
-          "created_at": "2026-11-11T16:11:11.635Z",
+          "id": 1041,
+          "created_at": "2026-11-11T16:31:27.270Z",
           "set_nummer": "8888",
           "name": "Leiterwagen",
           "notiz": null,
-          "kiste_id": 1039,
           "bilder": [],
           "art": "reserve",
           "user_id": "11111111-1111-1111-1111-111111111111"
@@ -404,15 +395,11 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T16:11:08.519Z",
+        "created_at": "2026-11-11T16:31:25.220Z",
         "set_nummer": "99-99",
         "name": "Neu",
         "notiz": null,
-        "farbe": "rot",
-        "beschreibung": null,
-        "anzahl": 3,
-        "euro": 4.5,
-        "kiste_id": 1039,
+        "beschreibung": "mit Anleitung",
         "bilder": [],
         "art": "reserve",
         "user_id": "11111111-1111-1111-1111-111111111111"
@@ -439,8 +426,7 @@
       "name": "Diesem Teil zuordnen: part saved + linked, old links kept",
       "pass": true,
       "info": [
-        1041,
-        1046
+        1044
       ]
     },
     {
@@ -452,13 +438,11 @@
       "pass": true,
       "info": {
         "links2": [
-          1041,
-          1046
+          1044
         ],
         "now": [
-          1041,
-          1046,
-          1048
+          1044,
+          1046
         ]
       }
     },
@@ -480,9 +464,9 @@
       "pass": true
     },
     {
-      "name": "Reserve/Sets export includes new fields",
+      "name": "Reserve/Sets export: number, name, description – no part columns",
       "pass": true,
-      "info": "﻿Bereich;Nummer;Name;Beschreibung;Farbe;Anzahl;Einzelpreis;Wert gesamt;In Kiste;Notiz;Teile zugeordnet;Fotos\r"
+      "info": "﻿Bereich;Nummer;Name;Beschreibung;Notiz;Teile zugeordnet;Fotos\r"
     },
     {
       "name": "no page errors",

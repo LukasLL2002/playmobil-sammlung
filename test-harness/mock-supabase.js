@@ -89,6 +89,17 @@
     createClient: () => ({
       from: t => new Q(t),
       rpc: async name => (name === 'is_admin' ? { data: false, error: null } : { data: [], error: null }),
+      functions: {
+        invoke: async (name, { body } = {}) => {
+          db.fn = db.fn || []; db.fn.push({ name, q: body?.q }); save();
+          if (window.__fnError) return { data: null, error: { message: 'x', context: { json: async () => ({ error: window.__fnError }) } } };
+          const all = [{ nr: '30 21 7962', name: 'Topfhelm-Raubritter', name_en: 'Robber knight great helm', farbe: 'metallic', kategorie: 'Clothing & Wearable', preis: 0.4,
+            sets: ['4868 - Falcon Knights\' Ballista', '4869 - Falcon Knight\'s Battering Ram', '4873 - Falcon Knights Troop', '5240 - Duo Pack Knights\' Duel'], img: null, link: 'https://www.klickypedia.com/parts/30217962-robber-knight-great-helm/' },
+            { nr: '30 00 1234', name: 'Schild rot', farbe: 'rot', kategorie: 'Weapons', preis: 0.3, sets: ['3666 - Ritterburg'], img: null, link: 'https://www.klickypedia.com/parts/30001234-shield/' }];
+          const q = String(body?.q || '').toLowerCase(), qd = q.replace(/\D/g, '');
+          return { data: { items: all.filter(i => (qd.length >= 4 && i.nr.replace(/\D/g, '') === qd) || (!/^[\d\s]+$/.test(q) && (i.name.toLowerCase().includes(q) || q.includes('helm') && i.name.includes('helm')))) }, error: null };
+        },
+      },
       auth: {
         getSession: async () => ({ data: { session: { user } } }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),

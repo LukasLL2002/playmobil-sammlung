@@ -221,3 +221,5 @@ body.readonly #impTeile,body.readonly #addTeil,body.readonly #nrSearch{display:n
 .psdlg .item{background:var(--blue-l);border-radius:12px;padding:.5rem;margin-bottom:.4rem;display:flex;gap:.6rem;align-items:center}
 input:disabled{background:#f1f3f5;color:#888}
 [hidden]{display:none!important}
+.psdlg .pssets summary{cursor:pointer;font-size:.85rem;color:var(--muted)}
+.psdlg .linkbtn{background:none;border:0;padding:0;color:var(--accent,#1565c0);text-decoration:underline;font:inherit;cursor:pointer}
