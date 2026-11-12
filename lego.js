@@ -57,11 +57,11 @@ async function routeLego(view, id) {
   const rbArt = new URLSearchParams(location.hash.split('?')[1] || '').get('art') === 'set' ? 'set' : 'reserve';
   const tab = view === 'set' ? (setArt(lsetById(id)) === 'set' ? 'l/sets' : 'l/reserve')
     : view === 'rebrickable' ? (rbArt === 'set' ? 'l/sets' : 'l/reserve')
-      : ({ teil: 'l/teile', kiste: 'l/kisten', import: 'l/uebersicht' }[view] || 'l/' + view);
+      : ({ teil: 'l/teile', kiste: 'l/kisten', import: 'l/uebersicht', doppelte: 'l/uebersicht' }[view] || 'l/' + view);
   setMode('lego', tab);
   const views = {
     teile: lTeile, teil: lTeil, kisten: lKisten, kiste: lKiste, reserve: () => lSets('reserve'), sets: () => lSets('set'), set: lSet,
-    uebersicht: lStats, teilen: () => viewTeilen('lego'), import: () => viewImport('lego'), rebrickable: () => lRebrickable(rbArt),
+    uebersicht: lStats, teilen: () => viewTeilen('lego'), import: () => viewImport('lego'), rebrickable: () => lRebrickable(rbArt), doppelte: () => viewDupes(true),
   };
   (views[view] || lTeile)(id);
 }
@@ -300,6 +300,7 @@ function lStats() {
       <button class="btn block secondary" id="expSets">📤 ${esc(artName('reserve', true))} &amp; ${esc(artName('set', true))} als Tabelle</button>
       <div style="height:.5rem"></div>
       <a class="btn block secondary" href="#l/rebrickable">🔑 Rebrickable-Einstellungen</a></div>
+    <h2>Aufräumen</h2><div class="card"><a class="btn block secondary" id="dupBtn" href="#l/doppelte">🔁 Doppelte prüfen</a></div>
     ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('lego')}</div>`}`;
   bindRenameTabs();
   document.getElementById('expSets').onclick = () => exportSetsCsv(true);

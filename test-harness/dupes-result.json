@@ -1,0 +1,141 @@
+{
+  "when": "2026-11-12T14:37:57.820Z",
+  "results": [
+    {
+      "name": "Übersicht has \"Doppelte prüfen\"",
+      "pass": true
+    },
+    {
+      "name": "groups found: 3112, 4400, 3666 (Reserve+Set), 5581",
+      "pass": true,
+      "info": "4 Gruppen mit möglichen Doppelten"
+    },
+    {
+      "name": "cross-kind group labelled with tab",
+      "pass": true
+    },
+    {
+      "name": "group tiles show parts + photos count",
+      "pass": true
+    },
+    {
+      "name": "default keeps best entry, suggests number+name",
+      "pass": true
+    },
+    {
+      "name": "confirm explains what happens",
+      "pass": true,
+      "info": "Zusammenführen?\n\nBleibt erhalten: „3112 – Gefängnisfestung“ (Reserve)\n→ danach: Nummer „3112“, Name „Gefängnisfestung“\n\nWird übernommen und danach gelöscht:\n• 3112 (Reserve)\n• 3112-A - (Reserve)\n\nÜbernommen werden: 2 Teile-Verknüpfungen, 1 Fotos, Notizen (angehängt); leere Felder werden ergänzt.\nKein Teil wird gelöscht. Das Löschen der zusammengeführten Einträge kann nicht rückgängig gemacht werden."
+    },
+    {
+      "name": "merged entries deleted, kept one updated",
+      "pass": true,
+      "info": {
+        "id": 1001,
+        "art": "reserve",
+        "bilder": [
+          "11111111-1111-1111-1111-111111111111/teile/p1.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/p2.jpg"
+        ],
+        "user_id": "11111111-1111-1111-1111-111111111111",
+        "created_at": "2026-01-01",
+        "name": "Gefängnisfestung",
+        "set_nummer": "3112",
+        "notiz": "Alt\nKarton fehlt"
+      }
+    },
+    {
+      "name": "photos united (cover stays first), notes appended",
+      "pass": true,
+      "info": {
+        "id": 1001,
+        "art": "reserve",
+        "bilder": [
+          "11111111-1111-1111-1111-111111111111/teile/p1.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/p2.jpg"
+        ],
+        "user_id": "11111111-1111-1111-1111-111111111111",
+        "created_at": "2026-01-01",
+        "name": "Gefängnisfestung",
+        "set_nummer": "3112",
+        "notiz": "Alt\nKarton fehlt"
+      }
+    },
+    {
+      "name": "no link loss, no duplicate links",
+      "pass": true,
+      "info": {
+        "kl": [
+          11,
+          12
+        ],
+        "before": 6,
+        "after": 5
+      }
+    },
+    {
+      "name": "group gone after merge",
+      "pass": true
+    },
+    {
+      "name": "part detail shows kept entry",
+      "pass": true
+    },
+    {
+      "name": "unchecked entry is kept, others merged",
+      "pass": true
+    },
+    {
+      "name": "dismissal saved",
+      "pass": true
+    },
+    {
+      "name": "skip hides group for now",
+      "pass": true
+    },
+    {
+      "name": "dismissed group stays hidden after reload",
+      "pass": true,
+      "info": "2 Gruppen mit möglichen Doppelten"
+    },
+    {
+      "name": "LEGO Übersicht has button",
+      "pass": true
+    },
+    {
+      "name": "LEGO: \"75192\" + \"75192-1\" grouped",
+      "pass": true
+    },
+    {
+      "name": "LEGO merge keeps both part links",
+      "pass": true,
+      "info": {
+        "s": [
+          {
+            "id": 31,
+            "set_nummer": "75192",
+            "name": "Millennium Falcon Ultimate Collector Series",
+            "art": "reserve",
+            "bilder": [],
+            "jahr": 2017,
+            "teile_anzahl": 7541,
+            "user_id": "11111111-1111-1111-1111-111111111111",
+            "notiz": null
+          }
+        ],
+        "l": [
+          {
+            "teil_id": 41,
+            "set_id": 31,
+            "user_id": "11111111-1111-1111-1111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "info": []
+    }
+  ]
+}

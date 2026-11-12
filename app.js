@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261112-1';
+const ASSET_V = '20261112-2';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -505,9 +505,9 @@ async function route() {
     try { await loadAll(); } catch (e) { fail(e); app.innerHTML = '<div class="card">Daten konnten nicht geladen werden. <button class="btn small" onclick="location.reload()">Neu laden</button></div>'; return; }
   }
   const [view, id] = parts;
-  const tab = view === 'set' ? (setArt(setById(id)) === 'set' ? 'sets' : 'reserve') : ({ teil: 'teile', kiste: 'kisten', etiketten: 'kisten' }[view] || view);
+  const tab = view === 'set' ? (setArt(setById(id)) === 'set' ? 'sets' : 'reserve') : ({ teil: 'teile', kiste: 'kisten', etiketten: 'kisten', doppelte: 'uebersicht' }[view] || view);
   setMode('pm', tab);
-  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, reserve: () => viewSets('reserve'), sets: () => viewSets('set'), set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil'), import: () => viewImport('playmobil') };
+  const views = { teile: viewTeile, teil: viewTeil, kisten: viewKisten, kiste: viewKiste, reserve: () => viewSets('reserve'), sets: () => viewSets('set'), set: viewSet, uebersicht: viewStats, etiketten: viewLabels, passwort: viewPasswort, teilen: () => viewTeilen('playmobil'), import: () => viewImport('playmobil'), doppelte: () => viewDupes(false) };
   (views[view] || viewTeile)(id);
 }
 window.addEventListener('hashchange', route);
@@ -791,7 +791,8 @@ function nrCore(s, lego) {
   return v.replace(/[^0-9a-zäöüß]/g, '').replace(/^0+(?=\d)/, '');
 }
 /** Führende Zahl („3112 – Gefängnis“ → 3112) */
-const nrLead = s => (String(s ?? '').normalize('NFKC').match(/^\s*0*(\d+)/) || [])[1] || '';
+/** Führende Zahl („3112 – Gefängnis“ → 3112; Teilenummern wie „30 14 3640“ zählen ganz) */
+const nrLead = s => ((String(s ?? '').normalize('NFKC').match(/^\s*0*(\d+(?:[ .\u00a0]\d+)*)/) || [])[1] || '').replace(/\D/g, '');
 /** Wie ähnlich ist eine vorhandene Nummer? 'exact' | 'near' | null */
 function nrMatch(typed, existing, lego) {
   const a = nrCore(typed, lego), b = nrCore(existing, lego);
@@ -1121,6 +1122,8 @@ function viewStats() {
       <button class="btn block" id="csv">⬇️ Als Tabelle speichern</button>
       <div style="height:.5rem"></div>
       <button class="btn block secondary" id="csvSets">⬇️ ${esc(artName('reserve'))} &amp; ${esc(artName('set'))} als Tabelle</button></div>
+    <h2>Aufräumen</h2><div class="card"><a class="btn block secondary" id="dupBtn" href="#doppelte">🔁 Doppelte prüfen</a>
+      <p class="muted" style="font-size:.85rem;margin:.4rem 0 0">Einträge in ${esc(artName('reserve'))} &amp; ${esc(artName('set'))} mit gleicher oder ähnlicher Nummer finden und zusammenführen.</p></div>
     ${state.viewUid ? '' : `<h2>Einstellungen</h2><div class="card">${renameTabsBtn('pm')}</div>`}
     <p class="muted center" style="font-size:.85rem">Angemeldet als ${esc(state.user.email)}</p>`;
   document.getElementById('csv').onclick = exportCsv;
@@ -2994,3 +2997,103 @@ if (!window.__HARNESS) (async () => {
   if (boot) boot.textContent = '';
   route();
 })();
+
+// ---------- Doppelte prüfen (Reserve/Sets) ----------
+/** Gruppen möglicher Doppelter: gleiche Nummer (ohne Leer-/Sonderzeichen) oder gleiche führende Zahl – über beide Reiter */
+function setDupGroups(list, lego) {
+  const parent = list.map((_, i) => i), find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const unite = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+  const byCore = new Map(), byLead = new Map();
+  list.forEach((s, i) => {
+    const c = nrCore(s.set_nummer, lego), l = nrLead(s.set_nummer);
+    if (c) { if (byCore.has(c)) unite(byCore.get(c), i); else byCore.set(c, i); }
+    if (l) { if (byLead.has(l)) unite(byLead.get(l), i); else byLead.set(l, i); }
+  });
+  const g = new Map();
+  list.forEach((s, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(s); });
+  return [...g.values()].filter(x => x.length > 1).map(items => {
+    items.sort((a, b) => a.id - b.id);
+    const lead = nrLead(items[0].set_nummer) || nrCore(items[0].set_nummer, lego);
+    return { key: lead + '|' + items.map(x => x.id).join(','), lead, items };
+  }).sort((a, b) => sortNat(a.lead, b.lead));
+}
+/** Vorschlag, welcher Eintrag bleibt: die meisten Teile, dann Fotos, dann längster Name */
+function dupBest(cfg, items) {
+  const score = s => [cfg.countTeile(s), imgList(s).length, (s.name || '').length + String(s.set_nummer).length];
+  return [...items].sort((a, b) => { const x = score(a), y = score(b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2] || a.id - b.id; })[0];
+}
+/** Vorschlag für Nummer + Name: „3112 – Gefängnisfestung“ → Nummer 3112, Name Gefängnisfestung */
+function dupSuggest(keep, items) {
+  const split = s => { const m = String(s.set_nummer || '').match(/^\s*([0-9][0-9A-Za-z]*)\s*[-–—:]\s*(\S.*)$/); return m ? { nr: m[1], rest: m[2].trim() } : null; };
+  const sp = split(keep);
+  const nummer = sp ? sp.nr : String(keep.set_nummer).trim();
+  const name = keep.name || items.map(s => s.name).find(Boolean) || (sp && sp.rest) || items.map(split).filter(Boolean).map(x => x.rest).find(Boolean) || '';
+  return { nummer, name };
+}
+async function viewDupes(lego) {
+  const cfg = SETCFG[lego ? 'lego' : 'pm'], bereich = lego ? 'lego' : 'playmobil', base = lego ? '#l/' : '#';
+  const ro = document.body.classList.contains('readonly');
+  app.innerHTML = `<a class="back" href="${base}uebersicht">‹ Übersicht</a><h1>🔁 Doppelte prüfen</h1><div class="center muted" style="padding:2rem">Wird geprüft …</div>`;
+  let dismissed = new Set();
+  try { const r = await sb.from('dup_ignoriert').select('gruppe').eq('user_id', owner()).eq('bereich', bereich); if (r.error) throw r.error; dismissed = new Set(r.data.map(x => x.gruppe)); } catch (e) { console.warn(e); }
+  const skipped = viewDupes.skipped = viewDupes.skipped || new Set();
+  let shown = 20;
+  const render = () => {
+    const groups = setDupGroups(cfg.list(), lego).filter(g => !dismissed.has(g.key));
+    const open = groups.filter(g => !skipped.has(g.key));
+    app.innerHTML = `<a class="back" href="${base}uebersicht">‹ Übersicht</a><h1>🔁 Doppelte prüfen</h1>
+      <p class="muted" style="margin-top:0">Einträge in ${esc(artName('reserve', lego))} und ${esc(artName('set', lego))} mit gleicher oder ähnlicher Nummer (z.B. „3112“ und „3112 – Gefängnisfestung“).</p>
+      <div class="card" id="dupSum"><b>${num(groups.length)}</b> ${groups.length === 1 ? 'Gruppe' : 'Gruppen'} mit möglichen Doppelten${skipped.size && open.length !== groups.length ? ` · ${num(groups.length - open.length)} übersprungen` : ''}</div>
+      ${ro ? '<p class="muted">Nur ansehen – Zusammenführen ist hier nicht möglich.</p>' : ''}
+      <div id="dupList">${open.slice(0, shown).map((g, gi) => groupHtml(g, gi)).join('') || '<div class="card center muted">Keine Doppelten gefunden. 🎉</div>'}</div>
+      ${open.length > shown ? `<button class="btn block secondary" id="dupMore">Weitere ${num(Math.min(20, open.length - shown))} von ${num(open.length - shown)} zeigen</button>` : ''}`;
+    const more = document.getElementById('dupMore'); if (more) more.onclick = () => { shown += 20; render(); };
+    open.slice(0, shown).forEach((g, gi) => bindGroup(g, gi));
+  };
+  const groupHtml = (g, gi) => {
+    const keep = dupBest(cfg, g.items), sug = dupSuggest(keep, g.items);
+    return `<div class="card dupgroup" data-g="${gi}" data-key="${esc(g.key)}">
+      <div class="muted" style="font-size:.85rem;margin-bottom:.3rem">${num(g.items.length)} Einträge · Nummer ${esc(g.lead)}</div>
+      <div class="list">${g.items.map(s => { const a = setArt(s);
+        return `<div class="item" data-sid="${s.id}">${thumb(s, artIcon(a))}<div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
+          <div class="sub">${artIcon(a)} ${esc(artName(a, lego))} · ${num(cfg.countTeile(s))} Teile · ${num(imgList(s).length)} Fotos</div>
+          ${ro ? '' : `<div class="sub"><label style="display:inline"><input type="radio" name="keep${gi}" value="${s.id}" ${s.id === keep.id ? 'checked' : ''}> bleibt</label>
+          &nbsp; <label style="display:inline"><input type="checkbox" data-inc="${s.id}" checked> zusammenführen</label></div>`}</div></div>`; }).join('')}</div>
+      ${ro ? '' : `<div class="grid2" style="margin-top:.4rem"><div><label>Nummer danach</label><input data-f="nummer" value="${esc(sug.nummer)}"></div><div><label>Name danach</label><input data-f="name" value="${esc(sug.name)}"></div></div>
+      <div class="row" style="flex-wrap:wrap;margin-top:.5rem"><button class="btn grow" type="button" data-act="merge">Zusammenführen</button>
+        <button class="btn secondary grow" type="button" data-act="ignore">Nicht doppelt</button><button class="btn secondary grow" type="button" data-act="skip">Überspringen</button></div>`}</div>`;
+  };
+  const bindGroup = (g, gi) => {
+    const el = document.querySelector(`.dupgroup[data-g="${gi}"]`); if (!el || ro) return;
+    const nr = el.querySelector('[data-f=nummer]'), na = el.querySelector('[data-f=name]');
+    el.querySelectorAll(`input[name="keep${gi}"]`).forEach(r => r.onchange = () => {
+      const keep = g.items.find(s => s.id === Number(r.value)), sug = dupSuggest(keep, g.items); nr.value = sug.nummer; na.value = sug.name;
+      el.querySelector(`[data-inc="${keep.id}"]`).checked = true; });
+    el.querySelector('[data-act=skip]').onclick = () => { skipped.add(g.key); render(); };
+    el.querySelector('[data-act=ignore]').onclick = async () => {
+      const r = await sb.from('dup_ignoriert').insert({ user_id: owner(), bereich, gruppe: g.key });
+      if (r.error && String(r.error.code) !== '23505') return fail(r.error);
+      dismissed.add(g.key); toast('Gemerkt – diese Gruppe wird nicht mehr angezeigt.'); render(); };
+    el.querySelector('[data-act=merge]').onclick = async () => {
+      const keepId = Number(el.querySelector(`input[name="keep${gi}"]:checked`).value), keep = g.items.find(s => s.id === keepId);
+      const merge = g.items.filter(s => s.id !== keepId && el.querySelector(`[data-inc="${s.id}"]`).checked);
+      if (!merge.length) return toast('Bitte mindestens einen weiteren Eintrag zum Zusammenführen auswählen.');
+      const nummer = nr.value.trim(), name = na.value.trim();
+      if (!nummer) return toast('Bitte eine Nummer angeben.');
+      const links = new Set(); for (const t of cfg.st().teile) for (const x of t[cfg.rel] || []) if (merge.some(m => m.id === x.set_id)) links.add(t.id);
+      const fotos = merge.reduce((n, s) => n + imgList(s).length, 0);
+      const msg = `Zusammenführen?\n\nBleibt erhalten: „${setLabel(keep)}“ (${artName(setArt(keep), lego)})\n→ danach: Nummer „${nummer}“, Name „${name || '–'}“\n\nWird übernommen und danach gelöscht:\n${merge.map(s => '• ' + setLabel(s) + ' (' + artName(setArt(s), lego) + ')').join('\n')}\n\nÜbernommen werden: ${links.size} Teile-Verknüpfungen, ${fotos} Fotos, Notizen (angehängt); leere Felder werden ergänzt.\nKein Teil wird gelöscht. Das Löschen der zusammengeführten Einträge kann nicht rückgängig gemacht werden.`;
+      if (!confirm(msg)) return;
+      const btn = el.querySelector('[data-act=merge]'); btn.disabled = true; btn.textContent = 'Wird zusammengeführt …';
+      const r = await sb.rpc('sets_zusammenfuehren', { p_lego: lego, p_keep: keepId, p_merge: merge.map(s => s.id), p_nummer: nummer, p_name: name || null });
+      if (r.error) { btn.disabled = false; btn.textContent = 'Zusammenführen'; return fail(r.error); }
+      const fresh = await sb.from(cfg.table).select('*').eq('id', keepId).single();
+      const gone = new Set(merge.map(s => s.id));
+      cfg.put(cfg.list().filter(s => !gone.has(s.id)).map(s => s.id === keepId && fresh.data ? fresh.data : s).sort((a, b) => sortNat(a.set_nummer, b.set_nummer)));
+      for (const t of cfg.st().teile) { const rel = t[cfg.rel]; if (!rel || !rel.some(x => gone.has(x.set_id))) continue;
+        const ids = [...new Set(rel.map(x => gone.has(x.set_id) ? keepId : x.set_id))]; t[cfg.rel] = ids.map(set_id => ({ set_id })); }
+      if (fresh.data) loadImageUrls([fresh.data]).catch(() => {});
+      toast(`Zusammengeführt ✔ (${r.data?.geloescht ?? merge.length} Einträge übernommen)`); render(); };
+  };
+  render();
+}

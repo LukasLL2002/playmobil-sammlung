@@ -1,0 +1,96 @@
+{
+  "live": {
+    "volvic": {
+      "name": "Volvic",
+      "qty": "1,5 L",
+      "mapped": {
+        "name": "Volvic",
+        "kategorie": "Getränke",
+        "einheit": "Flasche",
+        "mindestbestand": null,
+        "ort_id": null,
+        "menge": 1,
+        "gebinde_inhalt": 1.5,
+        "basis_einheit": "l",
+        "brands": "Volvic",
+        "quantityRaw": "1,5 L",
+        "source": "off"
+      }
+    },
+    "nutella": "Ferrero Nutella",
+    "missing": {
+      "ok": false,
+      "reason": "notfound"
+    },
+    "bad": {
+      "ok": false,
+      "reason": "invalid"
+    },
+    "unit": {
+      "gtinV": true,
+      "gtinUserBad": true,
+      "q15": {
+        "menge": 1,
+        "einheit": "Flasche",
+        "gebinde_inhalt": 1.5,
+        "basis_einheit": "l"
+      },
+      "q6": {
+        "menge": 6,
+        "einheit": "Flasche",
+        "gebinde_inhalt": 0.33,
+        "basis_einheit": "l"
+      },
+      "ASSET": "20261106-14",
+      "viewPlz": true,
+      "hasScan": true,
+      "noZXing": true
+    }
+  },
+  "afterFill": {
+    "name": "Volvic",
+    "kat": "Getränke",
+    "ein": "Flasche",
+    "gebinde": "1,5",
+    "basis": "l",
+    "mhd": "2027-06-01",
+    "menge": "1",
+    "off": "Produktdaten: Open Food Facts · Bitte Produkt prüfen",
+    "status": "Vorschlag übernommen – bitte Produkt prüfen.",
+    "offHidden": false
+  },
+  "notFoundUi": {
+    "name": "",
+    "bc": "9900000000004",
+    "status": "Produkt nicht gefunden – bitte Name selbst eingeben"
+  },
+  "offline": {
+    "ok": false,
+    "reason": "network",
+    "error": {
+      "name": "TypeError"
+    }
+  },
+  "zxing": true,
+  "modal": {
+    "code": "3057640257773",
+    "hasManual": true
+  },
+  "auto": {
+    "name": "Ferrero Nutella",
+    "bc": "3017624010701",
+    "ein": "Packung",
+    "status": "Vorschlag übernommen – bitte Produkt prüfen.",
+    "offHidden": false
+  },
+  "zxHttp": {
+    "ok": true,
+    "len": 336075
+  },
+  "pageErrors": [],
+  "liveVolvicOk": true,
+  "liveNutellaOk": true,
+  "fillOk": true,
+  "fails": [],
+  "ok": true
+}

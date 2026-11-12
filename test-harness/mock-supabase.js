@@ -99,7 +99,28 @@
   window.supabase = {
     createClient: () => ({
       from: t => new Q(t),
-      rpc: async name => (name === 'is_admin' ? { data: false, error: null } : { data: [], error: null }),
+      rpc: async (name, a = {}) => {
+        if (name === 'sets_zusammenfuehren') { // wie die SQL-Funktion (eine Transaktion)
+          const T = a.p_lego ? 'lego_sets' : 'sets', L = a.p_lego ? 'lego_teil_sets' : 'teil_sets';
+          db.log.push({ t: T, op: 'rpc_merge', payload: a });
+          const keep = db[T].find(s => s.id === a.p_keep), merge = [...new Set(a.p_merge)].filter(id => id !== a.p_keep);
+          const ms = merge.map(id => db[T].find(s => s.id === id));
+          if (!keep || ms.some(m => !m || m.user_id !== keep.user_id)) return { data: null, error: { message: 'Einträge gehören nicht zur selben Sammlung oder fehlen.' } };
+          const before = new Set(db[L].filter(x => x.set_id === keep.id || merge.includes(x.set_id)).map(x => x.teil_id));
+          let moved = 0;
+          for (const x of db[L].filter(x => merge.includes(x.set_id))) if (!db[L].some(y => y.teil_id === x.teil_id && y.set_id === keep.id)) { db[L].push({ teil_id: x.teil_id, set_id: keep.id, user_id: keep.user_id }); moved++; }
+          const after = new Set(db[L].filter(x => x.set_id === keep.id).map(x => x.teil_id));
+          if (after.size !== before.size) return { data: null, error: { message: 'Verknüpfungen unvollständig' } };
+          keep.bilder = [...new Set([...(keep.bilder || []), ...ms.flatMap(m => m.bilder || [])])];
+          const notes = []; for (const n of [keep.notiz, ...ms.map(m => m.notiz)]) if (n && n.trim() && !notes.some(x => x.trim() === n.trim())) notes.push(n);
+          keep.notiz = notes.join('\n') || null;
+          for (const f of ['beschreibung', 'farbe', 'anzahl', 'euro', 'kiste_id', 'jahr', 'teile_anzahl']) if (keep[f] == null || keep[f] === '') { const v = ms.map(m => m[f]).find(v => v != null && v !== ''); if (v != null) keep[f] = v; }
+          db[L] = db[L].filter(x => !merge.includes(x.set_id)); db[T] = db[T].filter(s => !merge.includes(s.id));
+          keep.set_nummer = a.p_nummer.trim(); keep.name = (a.p_name || '').trim() || null;
+          save(); return { data: { keep: keep.id, geloescht: merge.length, verknuepfungen_neu: moved, teile: after.size }, error: null };
+        }
+        return name === 'is_admin' ? { data: false, error: null } : { data: [], error: null };
+      },
       functions: {
         invoke: async (name, { body } = {}) => {
           db.fn = db.fn || []; db.fn.push({ name, q: body?.q }); save();

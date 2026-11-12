@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "checks": {
+    "beforeNoXlsx": true,
+    "afterHasXlsx": true,
+    "hasBtn": true,
+    "hasHint": true,
+    "fileWritten": true,
+    "fnameLocal": true,
+    "sheets": [
+      "Vorrat",
+      "Mengen & MHD",
+      "Orte"
+    ],
+    "hasVorrat": true,
+    "hasMengen": true,
+    "hasOrte": true,
+    "milkQty3": true,
+    "milkGebinde1": true,
+    "milkBasisL": true,
+    "evilEscaped": true,
+    "milkLots2": true,
+    "milkLotQtys": true,
+    "lotHasDate": true,
+    "viewPlz": true,
+    "noPageErrors": true,
+    "disableReentry": true
+  },
+  "errors": [],
+  "downloadPath": "/workspace/playmobil-app/test-harness/Sortiva-Vorrat-2026-11-06.xlsx",
+  "capturedName": "Sortiva-Vorrat-2026-11-06.xlsx"
+}
