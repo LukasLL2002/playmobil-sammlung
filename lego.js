@@ -30,10 +30,11 @@ const rebrickableKey = () => localStorage.getItem('rebrickableKey') || '';
 
 async function loadLego() {
   const [k, s, t] = await Promise.all([
-    sb.from('lego_kisten').select('*').eq('user_id', owner()),
-    sb.from('lego_sets').select('*').eq('user_id', owner()),
-    sb.from('lego_teile').select('*, lego_teil_sets(set_id)').eq('user_id', owner()).order('created_at', { ascending: false }),
+    selectAll(() => sb.from('lego_kisten').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('lego_sets').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('lego_teile').select('*, lego_teil_sets(set_id)').eq('user_id', owner())),
   ]);
+  if (t.data) t.data.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || b.id - a.id);
   for (const r of [k, s, t]) if (r.error) throw r.error;
   lstate.kisten = k.data.sort((a, b) => sortNat(a.nummer, b.nummer));
   lstate.sets = s.data.sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
@@ -353,13 +354,12 @@ async function lRebrickable(art = 'reserve') {
       </div>`).join('');
       res.querySelectorAll('button[data-num]').forEach(b => b.onclick = async () => {
         const row = { set_nummer: b.dataset.num, name: b.dataset.name || null };
-        const existing = findDupSet(SETCFG.lego, art, row.set_nummer);
-        if (existing) {
-          const ans = await askOverwrite(SETCFG.lego, existing, row);
+        const cands = await findSetCandidates(SETCFG.lego, art, row.set_nummer);
+        if (cands.length) {
+          const ans = await askDuplicate(SETCFG.lego, cands, row, { art });
           if (!ans) return;
-          if (ans === 'open') { location.hash = '#l/set/' + existing.id; return; }
-          try { const u = await overwriteSet(SETCFG.lego, existing, row); location.hash = '#l/set/' + u.id; } catch (e) { fail(e); }
-          return;
+          if (ans.a === 'open') { location.hash = '#l/set/' + ans.dup.id; return; }
+          if (ans.a === 'update') { try { const u = await overwriteSet(SETCFG.lego, ans.dup, row); location.hash = '#l/set/' + u.id; } catch (e) { fail(e); } return; }
         }
         const { data: saved, error } = await sb.from('lego_sets').insert({
           ...row, art, jahr: b.dataset.year ? Number(b.dataset.year) : null,

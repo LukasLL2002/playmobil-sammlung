@@ -1,8 +1,9 @@
 const { chromium } = require('/usr/local/lib/pnpm/5/.pnpm/playwright-core@1.59.1/node_modules/playwright-core');
 const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+const FX = require('./make-fixtures')();
 const MOCK = fs.readFileSync(path.join(__dirname, 'mock-supabase.js'), 'utf8');
-const XLSXJS = fs.readFileSync('/tmp/xl/xlsx.full.min.js', 'utf8');
+const XLSXJS = fs.readFileSync(FX + '/xlsx.full.min.js', 'utf8');
 const types = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const srv = http.createServer((q, r) => { const p = path.join(ROOT, decodeURIComponent(q.url.split('?')[0])); const f = fs.existsSync(p) && fs.statSync(p).isDirectory() ? path.join(p, 'index.html') : p;
   if (!fs.existsSync(f)) { r.writeHead(404); return r.end(); } r.writeHead(200, { 'content-type': types[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r); });
@@ -38,7 +39,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const doImport = async (hash, file) => {
     await go('#kisten'); await go(hash); await page.setInputFiles('#file', file); await page.waitForSelector('[data-sheet]', { timeout: 15000 });
   };
-  await doImport('#import', '/tmp/xl/teile-5blaetter.xlsx');
+  await doImport('#import', FX + '/teile-5blaetter.xlsx');
   const sheetInfo = await page.$$eval('[data-sheet]', a => a.map(c => ({ n: c.dataset.sheet, on: c.checked, t: c.parentElement.textContent.replace(/\s+/g, ' ').trim() })));
   ok('all 5 sheets listed, checked, with row counts', sheetInfo.length === 5 && sheetInfo.every(s => s.on) && sheetInfo[1].t.includes('4 Zeilen'), sheetInfo);
   await page.click('#go'); await page.waitForSelector('#revSum');
@@ -52,6 +53,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const ritterSets = d.teil_sets.filter(x => x.teil_id === ritter.id).map(x => d.sets.find(s => s.id === x.set_id).set_nummer);
   const bart = imported.find(t => t.beschreibung === 'Bart');
   ok('first import: all sheets imported (9 new)', /9 neu/.test(sum) && imported.length === 9 && ['Ritterhelm', 'Zaun', 'Helm', 'Schild'].every(n => imported.some(t => (t.beschreibung || '').includes(n))), { sum, n: imported.length });
+  ok('header "Teile-Nr." recognised (numbers imported)', imported.filter(t => t.teile_nr).length === 8 && imported.some(t => t.teile_nr === '20 30 3000'), imported.map(t => t.teile_nr));
   ok('"---" treated as empty; empty number marked unknown', imported.every(t => t.farbe !== '---' && t.teile_nr !== '---') && bart.teile_nr == null && bart.nummer_unbekannt === true, bart);
   ok('file duplicate merged (Ritter once, sets from both sheets)', imported.filter(t => t.beschreibung === 'Ritter').length === 1 && ritterSets.includes('4000'), ritterSets);
   const guertel = imported.find(t => t.beschreibung === 'Gürtel');
@@ -60,7 +62,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const before = { teile: d.teile.length, links: d.teil_sets.length, sets: d.sets.length, kisten: d.kisten.length };
 
   // --- erneut hochladen (gleiche Datei) ---
-  await doImport('#import', '/tmp/xl/teile-5blaetter.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
+  await doImport('#import', FX + '/teile-5blaetter.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
   sum = await page.textContent('#revSum');
   ok('reimport review: 0 new, 9 unchanged', /0 neu/.test(sum) && /9 schon vorhanden/.test(sum) && /0 vorhanden mit Änderungen/.test(sum), sum);
   await page.click('#run'); await page.waitForSelector('#importSummary');
@@ -69,12 +71,12 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('reimport: no new rows, nothing deleted', d.teile.length === before.teile && d.teil_sets.length === before.links && d.sets.length === before.sets && deletes === 0, { after: d.teile.length, before, deletes, sum: await page.textContent('#importSummary') });
 
   // --- ODS mit Änderungen? zuerst ODS gleich → 0 neu
-  await doImport('#import', '/tmp/xl/teile-5blaetter.ods'); const odsSheets = await page.locator('[data-sheet]').count();
+  await doImport('#import', FX + '/teile-5blaetter.ods'); const odsSheets = await page.locator('[data-sheet]').count();
   await page.click('#go'); await page.waitForSelector('#revSum');
   ok('ODS file read (all sheets, 0 new on reimport)', /0 neu/.test(await page.textContent('#revSum')) && odsSheets === 5, odsSheets);
 
   // --- geänderte Datei: Abfrage pro Teil ---
-  await doImport('#import', '/tmp/xl/teile-5blaetter-geaendert.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
+  await doImport('#import', FX + '/teile-5blaetter-geaendert.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
   sum = await page.textContent('#revSum');
   const chg = await page.locator('.chg').count();
   ok('changed values listed for decision', /2 vorhanden mit Änderungen/.test(sum) && chg === 2, { sum, chg });
@@ -89,14 +91,14 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   const helm = d.teile.find(t => t.beschreibung === '1. Ritterhelm'), zaun = d.teile.find(t => t.teile_nr === '20 30 3000');
   ok('only chosen item updated; summary', helm.anzahl === 5 && zaun.beschreibung === 'Zaun' && /0 neu/.test(sum) && /1 aktualisiert/.test(sum) && /8 übersprungen/.test(sum) && d.teile.length === before.teile, { sum, helm: helm.anzahl, zaun: zaun.beschreibung });
   // Bulk-Knöpfe
-  await doImport('#import', '/tmp/xl/teile-5blaetter-geaendert.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
+  await doImport('#import', FX + '/teile-5blaetter-geaendert.xlsx'); await page.click('#go'); await page.waitForSelector('#revSum');
   await page.click('#allUpd'); ok('"Alle aktualisieren" selects all', (await page.locator('input[value="upd"]:checked').count()) === (await page.locator('.chg').count()));
   await page.click('#allSkip'); ok('"Alle überspringen" selects all', (await page.locator('input[value="skip"]:checked').count()) === (await page.locator('.chg').count()));
   // Blatt abwählen
-  await doImport('#import', '/tmp/xl/teile-5blaetter.xlsx'); await page.uncheck('[data-sheet="T-Z"]'); ok('sheet can be unchecked', (await page.textContent('#rowCount')).trim() === '9');
+  await doImport('#import', FX + '/teile-5blaetter.xlsx'); await page.uncheck('[data-sheet="T-Z"]'); ok('sheet can be unchecked', (await page.textContent('#rowCount')).trim() === '9');
 
   // LEGO-Import der ODS
-  await doImport('#l/import', '/tmp/xl/teile-5blaetter.ods'); await page.click('#go'); await page.waitForSelector('#revSum');
+  await doImport('#l/import', FX + '/teile-5blaetter.ods'); await page.click('#go'); await page.waitForSelector('#revSum');
   await page.click('#run'); await page.waitForSelector('#importSummary');
   d = await db(); ok('LEGO import reads all sheets', d.lego_teile.length === 1 + 9, d.lego_teile.length);
 
@@ -120,7 +122,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('pick fills number, nothing saved', (await page.inputValue('#nr')) === '30 22 1110' && !(await page.isChecked('#nrUnk')) && page.url().endsWith('#teil/neu'));
   await page.evaluate(() => { window.viewBon = () => {}; window.ocrReceipt = async () => 'Beutel Nr. 30 00 1234\nrot'; });
   await page.click('#nrSearch'); await page.waitForSelector('.psdlg');
-  await page.setInputFiles('.psdlg #psFile', '/tmp/img-red.png'); await page.waitForSelector('.psdlg [data-pick]');
+  await page.setInputFiles('.psdlg #psFile', FX + '/img-red.png'); await page.waitForSelector('.psdlg [data-pick]');
   const ocrSug = await page.$$eval('.psdlg .psitem .title', a => a.map(x => x.textContent));
   ok('PM photo search reads printed number (OCR)', ocrSug.includes('30 00 1234'), ocrSug);
   ok('PM photo: OCR number looked up on Klickypedia (name, sets, source link)', (await page.textContent('.psdlg')).includes('Schild rot') && (await page.$$eval('.psdlg .psitem a', a => a.map(x => x.href))).some(h => h.includes('klickypedia.com/parts/30001234')));
@@ -144,7 +146,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('LEGO name search: Rebrickable suggestion (mocked)', lSug.some(s => s.includes('3001') && s.includes('Rebrickable')), lSug);
   await page.click('.psdlg [data-more]'); await page.waitForFunction(() => document.querySelector('.psdlg').textContent.includes('Farben:'));
   ok('LEGO: colours & sets loaded on demand', (await page.textContent('.psdlg')).includes('Red (120 Sets)'));
-  await page.setInputFiles('.psdlg #psFile', '/tmp/img-red.png'); await page.waitForFunction(() => document.querySelector('.psdlg')?.textContent.includes('3003'));
+  await page.setInputFiles('.psdlg #psFile', FX + '/img-red.png'); await page.waitForFunction(() => document.querySelector('.psdlg')?.textContent.includes('3003'));
   ok('LEGO photo search: Brickognize suggestion (mocked)', (await page.textContent('.psdlg')).includes('93 % sicher') && net.some(u => u.includes('brickognize')));
   await page.click('.psdlg [data-pick="0"]'); ok('LEGO pick fills number', (await page.inputValue('#nr')) === '3003');
 

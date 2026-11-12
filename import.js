@@ -46,12 +46,14 @@ async function downloadTemplate(kind) {
   XLSX.writeFile(wb, `vorlage-${kind}.xlsx`);
 }
 
+/** Überschrift vergleichbar machen: „Teile-Nr.“ = „teile_nr“ = „Teile Nr“ */
+const hdrKey = s => norm(String(s ?? '')).replace(/[^a-z0-9äöüß]/g, '');
 function guessMap(headers, hints) {
   const map = {};
-  const lower = headers.map(h => norm(h));
+  const lower = headers.map(hdrKey);
   for (const [field, aliases] of Object.entries(hints)) {
     let idx = -1;
-    for (const a of aliases) { idx = lower.findIndex(h => h === norm(a) || h.includes(norm(a))); if (idx >= 0) break; }
+    for (const a of aliases) { const k = hdrKey(a); idx = k ? lower.findIndex(h => h === k || h.includes(k)) : -1; if (idx >= 0) break; }
     map[field] = idx;
   }
   return map;
@@ -59,10 +61,10 @@ function guessMap(headers, hints) {
 
 /** „---“, „-“ usw. gelten als leer */
 const cleanCell = v => { const s = String(v ?? '').replace(/\u00a0/g, ' ').trim(); return /^[-–—_]+$/.test(s) ? '' : s; };
-const ALL_HINTS = () => Object.values(IMPORT_TEMPLATES).flatMap(t => Object.values(t.mapHints).flat()).map(a => norm(a));
+const ALL_HINTS = () => Object.values(IMPORT_TEMPLATES).flatMap(t => Object.values(t.mapHints).flat()).map(hdrKey);
 function headerScore(row) {
   const al = ALL_HINTS();
-  return row.reduce((s, c) => { const h = norm(String(c ?? '').trim()); if (!h || /\d{3}/.test(h)) return s;
+  return row.reduce((s, c) => { const h = hdrKey(String(c ?? '').trim()); if (!h || /\d{3}/.test(h)) return s;
     return s + (al.some(a => h === a || (a.length >= 4 && h.includes(a))) ? 1 : 0); }, 0);
 }
 /** Liest ALLE Blätter einer Excel-/ODS-/CSV-Datei */

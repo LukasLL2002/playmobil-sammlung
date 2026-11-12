@@ -28,7 +28,8 @@
   if (!db) db = seed();
   const save = () => localStorage.setItem(KEY, JSON.stringify(db));
   save();
-  window.__mock = { db: () => db, reset: () => { db = seed(); save(); }, U };
+  window.__mock = { db: () => db, reset: () => { db = seed(); save(); }, U,
+    addSets: list => { for (const s of list) db.sets.push({ id: ++db.seq, art: 'reserve', bilder: [], user_id: U, created_at: '2026-01-01', name: null, ...s }); save(); } };
   const svg = c => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="${c}"/></svg>`);
   const colorFor = p => ['#c62828', '#2e7d32', '#1565c0', '#f9a825', '#6a1b9a'][[...p].reduce((s, ch) => s + ch.charCodeAt(0), 0) % 5];
   const rel = { teil_sets: 'teil_id', lego_teil_sets: 'teil_id' };
@@ -40,7 +41,11 @@
     neq(k, v) { this.f.push(r => String(r[k]) !== String(v)); return this; }
     in(k, vs) { this.f.push(r => vs.map(String).includes(String(r[k]))); return this; }
     is(k, v) { this.f.push(r => (r[k] ?? null) === v); return this; }
-    order() { return this; } limit() { return this; } range() { return this; } gt() { return this; } lt() { return this; } gte() { return this; } lte() { return this; } ilike() { return this; } not() { return this; } or() { return this; } filter() { return this; }
+    order(k, o) { (this.ord = this.ord || []).push([k, !(o && o.ascending === false)]); return this; }
+    limit(n) { this.lim = n; return this; }
+    range(a, b) { this.rng = [a, b]; return this; }
+    ilike(k, pat) { const re = new RegExp('^' + String(pat).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i'); this.f.push(r => re.test(String(r[k] ?? ''))); return this; }
+    gt() { return this; } lt() { return this; } gte() { return this; } lte() { return this; } not() { return this; } or() { return this; } filter() { return this; }
     single() { this.one = true; return this; }
     maybeSingle() { this.one = true; this.maybe = true; return this; }
     insert(p) { this.op = 'insert'; this.payload = p; return this; }
@@ -61,7 +66,13 @@
         const d = T.find(x => x !== self && u.every(k => String(x[k] ?? (k === 'art' ? 'reserve' : '')) === String(row[k] ?? (k === 'art' ? 'reserve' : ''))));
         return d ? { code: '23505', message: 'duplicate key value violates unique constraint' } : null; };
       let rows;
-      if (this.op === 'select') rows = T.filter(match);
+      if (this.op === 'select') {
+        rows = T.filter(match);
+        for (const [k, asc] of [...(this.ord || [])].reverse()) rows = [...rows].sort((x, y) => (x[k] > y[k] ? 1 : x[k] < y[k] ? -1 : 0) * (asc ? 1 : -1));
+        if (this.rng) rows = rows.slice(this.rng[0], this.rng[1] + 1);
+        if (this.lim != null) rows = rows.slice(0, this.lim);
+        if (!this.one) rows = rows.slice(0, window.__maxRows || 1000); // wie PostgREST max-rows
+      }
       else if (this.op === 'insert' || this.op === 'upsert') {
         const list = Array.isArray(this.payload) ? this.payload : [this.payload];
         rows = [];

@@ -1,0 +1,279 @@
+{
+  "when": "2026-11-12T14:29:17.765Z",
+  "results": [
+    {
+      "name": "all Reserve entries loaded (>1000, paginated)",
+      "pass": true,
+      "info": "1208"
+    },
+    {
+      "name": "entry beyond row 1000 visible in list",
+      "pass": true
+    },
+    {
+      "name": "\"3112\" finds similar \"3112 – Gefängnisfestung\" and \"3112-A -\"",
+      "pass": true,
+      "info": {
+        "title": "Ähnliche Nummer vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Mit dieser Nummer anlegen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "3112 – Gefängnisfestung",
+          "3112-A -"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet",
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "near match offers Aktualisieren / Vorhandenes öffnen / Mit dieser Nummer anlegen / Abbrechen",
+      "pass": true,
+      "info": [
+        "Aktualisieren",
+        "Vorhandenes öffnen",
+        "Mit dieser Nummer anlegen",
+        "Abbrechen"
+      ]
+    },
+    {
+      "name": "\"Mit dieser Nummer anlegen\" creates exactly \"3112\", old entries untouched",
+      "pass": true
+    },
+    {
+      "name": "\"3112 -\" recognised as existing 3112 (exact first, no \"anlegen\")",
+      "pass": true,
+      "info": {
+        "title": "Schon vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "3112 Gefängnis",
+          "3112 – Gefängnisfestung",
+          "3112-A -"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · gleiche Nummer",
+          "0 Teile zugeordnet",
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet",
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "Abbrechen keeps dialog values",
+      "pass": true
+    },
+    {
+      "name": "\"36 66\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"3.666\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"3\\u2011666\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"3\\ua0666\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"\\uff13\\uff16\\uff16\\uff16\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"03666\" = existing",
+      "pass": true,
+      "info": [
+        "3666 Ritterburg"
+      ]
+    },
+    {
+      "name": "\"5581\" = existing",
+      "pass": true,
+      "info": [
+        "5581 -"
+      ]
+    },
+    {
+      "name": "\"3429\" = existing",
+      "pass": true,
+      "info": [
+        "3429)"
+      ]
+    },
+    {
+      "name": "\"2013\" finds \"2013 (Ausgabe 5)\"",
+      "pass": true,
+      "info": {
+        "title": "Ähnliche Nummer vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Mit dieser Nummer anlegen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "2013 (Ausgabe 5)"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "Sets tab detects number from Reserve, says which tab",
+      "pass": true,
+      "info": {
+        "title": "Schon vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Mit dieser Nummer anlegen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "3666 Ritterburg"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · gleiche Nummer",
+          "1 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "\"anlegen\" across kinds creates the Set",
+      "pass": true
+    },
+    {
+      "name": "server-side check finds entry not yet in loaded list",
+      "pass": true,
+      "info": {
+        "title": "Ähnliche Nummer vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Mit dieser Nummer anlegen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "7777 – von anderem Gerät"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "part form: exact + similar listed with Diesem Teil zuordnen",
+      "pass": true,
+      "info": {
+        "title": "Schon vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Diesem Teil zuordnen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "3112 Gefängnis",
+          "3112 – Gefängnisfestung",
+          "3112-A -"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · gleiche Nummer",
+          "0 Teile zugeordnet",
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet",
+          "🏰 in „Reserve“ · ähnliche Nummer",
+          "0 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "chosen candidate linked in chips (not the first one)",
+      "pass": true
+    },
+    {
+      "name": "part form near match offers \"anlegen\"",
+      "pass": true,
+      "info": [
+        "Aktualisieren",
+        "Diesem Teil zuordnen",
+        "Mit dieser Nummer anlegen",
+        "Abbrechen"
+      ]
+    },
+    {
+      "name": "\"anlegen\" from part form adds new entry to chips",
+      "pass": true
+    },
+    {
+      "name": "part saved with both links",
+      "pass": true,
+      "info": [
+        "2013 Neu",
+        "3112 – Gefängnisfestung"
+      ]
+    },
+    {
+      "name": "edit to existing number is blocked with message",
+      "pass": true
+    },
+    {
+      "name": "LEGO \"75192-1\" = existing 75192",
+      "pass": true,
+      "info": {
+        "title": "Schon vorhanden – was tun?",
+        "btns": [
+          "Aktualisieren",
+          "Vorhandenes öffnen",
+          "Abbrechen"
+        ],
+        "tiles": [
+          "75192 Millennium Falcon Ultimate Collector Series"
+        ],
+        "subs": [
+          "🏰 in „Reserve“ · gleiche Nummer",
+          "1 Teile zugeordnet"
+        ]
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "info": []
+    }
+  ]
+}

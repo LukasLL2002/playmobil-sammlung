@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261111-3';
+const ASSET_V = '20261112-1';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -159,12 +159,23 @@ const FARBEN = { rot: '#d32f2f', blau: '#1976d2', grün: '#388e3c', gruen: '#388
 const dot = f => { const c = FARBEN[norm(f).trim()]; return c ? `<span class="colordot" style="background:${c}"></span>` : ''; };
 
 // ---------- Daten ----------
+/** Alle Zeilen holen – der Server liefert pro Abfrage höchstens 1000, deshalb seitenweise (stabil nach id sortiert). */
+async function selectAll(build, page = 1000) {
+  const out = [];
+  for (let from = 0; ; from += page) {
+    const r = await build().order('id', { ascending: true }).range(from, from + page - 1);
+    if (r.error) return r;
+    out.push(...r.data);
+    if (r.data.length < page) return { data: out, error: null };
+  }
+}
 async function loadAll() {
   const [k, s, t] = await Promise.all([
-    sb.from('kisten').select('*').eq('user_id', owner()),
-    sb.from('sets').select('*').eq('user_id', owner()),
-    sb.from('teile').select('*, teil_sets(set_id)').eq('user_id', owner()).order('created_at', { ascending: false }),
+    selectAll(() => sb.from('kisten').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('sets').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('teile').select('*, teil_sets(set_id)').eq('user_id', owner())),
   ]);
+  if (t.data) t.data.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || b.id - a.id);
   for (const r of [k, s, t]) if (r.error) throw r.error;
   state.kisten = k.data.sort((a, b) => sortNat(a.nummer, b.nummer));
   state.sets = s.data.sort((a, b) => sortNat(a.set_nummer, b.set_nummer));
@@ -773,31 +784,75 @@ function setOptions(list, lego, selected) {
   return ['reserve', 'set'].map(a => { const l = list.filter(s => setArt(s) === a); return l.length
     ? `<optgroup label="${artIcon(a)} ${esc(artName(a, lego))}">${l.map(s => `<option value="${s.id}" ${String(s.id) === String(selected ?? '') ? 'selected' : ''}>${esc(setLabel(s))}</option>`).join('')}</optgroup>` : ''; }).join('');
 }
-const findDupSet = (cfg, art, nummer, exceptId) => { const n = normNr(nummer); return n ? cfg.list().find(x => x.id !== exceptId && setArt(x) === art && normNr(x.set_nummer) === n) : null; };
-/** Kachel des vorhandenen Eintrags zeigen und fragen, was passieren soll.
- *  Antwort: 'update' | 'link' (nur im Teil-Formular) | 'open' (nur ohne Teil) | null (Abbrechen) */
-function askOverwrite(cfg, dup, row, opts = {}) {
+/** Kern einer Set-Nummer: nur Buchstaben/Ziffern, klein, ohne führende Nullen; LEGO „-1“ zählt nicht */
+function nrCore(s, lego) {
+  let v = String(s ?? '').normalize('NFKC').toLowerCase().trim();
+  if (lego) v = v.replace(/-1$/, '');
+  return v.replace(/[^0-9a-zäöüß]/g, '').replace(/^0+(?=\d)/, '');
+}
+/** Führende Zahl („3112 – Gefängnis“ → 3112) */
+const nrLead = s => (String(s ?? '').normalize('NFKC').match(/^\s*0*(\d+)/) || [])[1] || '';
+/** Wie ähnlich ist eine vorhandene Nummer? 'exact' | 'near' | null */
+function nrMatch(typed, existing, lego) {
+  const a = nrCore(typed, lego), b = nrCore(existing, lego);
+  if (!a || !b) return null;
+  if (a === b) return 'exact';
+  const la = nrLead(typed), lb = nrLead(existing);
+  if (la && la === lb) return 'near';
+  if (!la && !lb && Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return 'near';
+  return null;
+}
+/** Vorhandene Einträge (Reserve UND Sets) mit gleicher/ähnlicher Nummer – geprüft direkt in der Datenbank, nicht nur in der geladenen Liste */
+async function findSetCandidates(cfg, art, nummer, exceptId) {
+  const lead = nrLead(nummer), core = nrCore(nummer, cfg.lego);
+  if (!core) return [];
+  let pool = cfg.list();
+  try {
+    let q = sb.from(cfg.table).select('*').eq('user_id', owner());
+    q = lead ? q.ilike('set_nummer', `%${lead}%`) : q.ilike('set_nummer', `%${String(nummer).trim().replace(/[%_\\]/g, '').slice(0, 3)}%`);
+    const r = await q.limit(200);
+    if (!r.error && r.data) {
+      const known = new Set(pool.map(x => x.id)), extra = r.data.filter(x => !known.has(x.id));
+      if (extra.length) { cfg.put([...pool, ...extra].sort((a, b) => sortNat(a.set_nummer, b.set_nummer))); pool = cfg.list(); }
+    }
+  } catch { /* offline: geladene Liste reicht */ }
+  return pool.filter(x => x.id !== exceptId).map(x => ({ s: x, m: nrMatch(nummer, x.set_nummer, cfg.lego) })).filter(x => x.m)
+    .sort((a, b) => (a.m === 'exact' ? 0 : 1) - (b.m === 'exact' ? 0 : 1) || (setArt(a.s) === art ? 0 : 1) - (setArt(b.s) === art ? 0 : 1) || sortNat(a.s.set_nummer, b.s.set_nummer))
+    .slice(0, 5);
+}
+const findDupSet = (cfg, art, nummer, exceptId) => { const n = nrCore(nummer, cfg.lego); return n ? cfg.list().find(x => x.id !== exceptId && setArt(x) === art && nrCore(x.set_nummer, cfg.lego) === n) : null; };
+/** Vorhandene (gleiche oder ähnliche) Einträge zeigen und fragen, was passieren soll.
+ *  cands: [{ s, m: 'exact'|'near' }]. Antwort: { a: 'update'|'link'|'open'|'create', dup } oder null (Abbrechen) */
+function askDuplicate(cfg, cands, row, opts = {}) {
   return new Promise(resolve => {
-    const art = setArt(dup);
+    const art = opts.art || 'reserve';
+    const sameExact = cands.some(c => c.m === 'exact' && setArt(c.s) === art);
+    const allNear = cands.every(c => c.m === 'near');
     const d = document.createElement('dialog'); d.className = 'dupdlg';
-    d.innerHTML = `<h2 style="margin-top:0">Schon vorhanden – was tun?</h2>
-      <p style="margin-top:0">In „${esc(artName(art, cfg.lego))}“ gibt es die Nummer <b>${esc(dup.set_nummer)}</b> schon:</p>
-      <div class="list"><div class="item" data-dup>${thumb(dup, artIcon(art))}
-        <div class="info"><div class="title">${esc(dup.set_nummer)} ${esc(dup.name || '')}</div>
-        <div class="sub">${num(cfg.countTeile(dup))} Teile zugeordnet${imgList(dup).length ? ' · ' + num(imgList(dup).length) + ' Foto(s)' : ''}</div></div></div></div>
-      <p style="margin-bottom:.3rem"><b>Aktualisieren</b> übernimmt nur <b>Nummer</b> und <b>Name</b>:<br>
-        <span class="muted">${esc(dup.set_nummer)} ${esc(dup.name || '')}</span> → <b>${esc(row.set_nummer)} ${esc(row.name || dup.name || '')}</b><br>
+    const tile = (c, i) => { const s = c.s, a = setArt(s);
+      return `<label class="item" data-dup="${s.id}" style="cursor:pointer">${cands.length > 1 ? `<input type="radio" name="dupPick" value="${i}" ${i === 0 ? 'checked' : ''} style="margin-right:.4rem">` : ''}${thumb(s, artIcon(a))}
+        <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
+        <div class="sub">${artIcon(a)} in „${esc(artName(a, cfg.lego))}“ · ${c.m === 'exact' ? 'gleiche Nummer' : 'ähnliche Nummer'}</div>
+        <div class="sub">${num(cfg.countTeile(s))} Teile zugeordnet${imgList(s).length ? ' · ' + num(imgList(s).length) + ' Foto(s)' : ''}</div></div></label>`; };
+    d.innerHTML = `<h2 style="margin-top:0">${allNear ? 'Ähnliche Nummer vorhanden – was tun?' : 'Schon vorhanden – was tun?'}</h2>
+      <p style="margin-top:0">Du hast <b>${esc(row.set_nummer)}</b> eingegeben. ${cands.length > 1 ? 'Diese Einträge gibt es schon – bitte einen auswählen:' : 'Diesen Eintrag gibt es schon:'}</p>
+      <div class="list">${cands.map(tile).join('')}</div>
+      <p style="margin-bottom:.3rem"><b>Aktualisieren</b> übernimmt beim ausgewählten Eintrag nur <b>Nummer</b> und <b>Name</b> (→ <b>${esc(row.set_nummer)} ${esc(row.name || '')}</b>).<br>
         <span class="muted" style="font-size:.85rem">Fotos, Notiz und alle schon zugeordneten Teile bleiben erhalten${opts.fromPart ? ' – dieses Teil wird zusätzlich zugeordnet' : ''}.</span></p>
       ${opts.fromPart ? `<p class="muted" style="font-size:.85rem;margin-top:0"><b>Diesem Teil zuordnen</b> lässt den vorhandenen Eintrag unverändert und wählt ihn nur für dieses Teil aus.</p>` : ''}
+      ${sameExact ? '' : `<p class="muted" style="font-size:.85rem;margin-top:0"><b>Mit dieser Nummer anlegen</b> legt trotzdem einen neuen Eintrag „${esc(row.set_nummer)}“ in „${esc(artName(art, cfg.lego))}“ an.</p>`}
       <div class="row" style="flex-wrap:wrap"><button class="btn grow" type="button" data-yes>Aktualisieren</button>
         ${opts.fromPart ? `<button class="btn grow" type="button" data-link>Diesem Teil zuordnen</button>` : `<button class="btn secondary grow" type="button" data-open>Vorhandenes öffnen</button>`}
+        ${sameExact ? '' : `<button class="btn secondary grow" type="button" data-create>Mit dieser Nummer anlegen</button>`}
         <button class="btn secondary grow" type="button" data-no>Abbrechen</button></div>`;
     document.body.appendChild(d); d.showModal();
     let ans = null;
-    const pick = v => () => { ans = v; d.close(); };
+    const sel = () => cands[Number(d.querySelector('input[name=dupPick]:checked')?.value || 0)].s;
+    const pick = v => () => { ans = { a: v, dup: v === 'create' ? null : sel() }; d.close(); };
     d.querySelector('[data-yes]').onclick = pick('update');
     d.querySelector('[data-link]')?.addEventListener('click', pick('link'));
     d.querySelector('[data-open]')?.addEventListener('click', pick('open'));
+    d.querySelector('[data-create]')?.addEventListener('click', pick('create'));
     d.querySelector('[data-no]').onclick = () => d.close();
     d.addEventListener('close', () => { d.remove(); resolve(ans); });
   });
@@ -830,15 +885,20 @@ function setDialogX(cfg, s, art = 'reserve', opts = {}) {
     const f = d.querySelector('form');
     const row = formVals(f, (cfg.lego ? ['set_nummer', 'name', 'notiz', 'jahr', 'teile_anzahl'] : ['set_nummer', 'name', 'notiz']).concat(fromPart ? [] : SET_PART_FIELDS));
     if (cfg.lego) for (const k of ['jahr', 'teile_anzahl']) { if (row[k] != null) { const n = parseInt(row[k], 10); if (Number.isNaN(n)) throw new Error('Bitte bei „' + (k === 'jahr' ? 'Jahr' : 'Teile') + '“ eine Zahl eingeben.'); row[k] = n; } }
-    const dup = findDupSet(cfg, art, row.set_nummer, s?.id);
-    if (dup && s) throw new Error('Diese Nummer gibt es in „' + nm + '“ schon (' + setLabel(dup) + ').');
-    if (dup) {
-      const ans = await askOverwrite(cfg, dup, row, { fromPart });
+    const cands = await findSetCandidates(cfg, art, row.set_nummer, s?.id);
+    if (s) {
+      const same = cands.find(c => c.m === 'exact' && setArt(c.s) === art);
+      if (same) throw new Error('Diese Nummer gibt es in „' + nm + '“ schon (' + setLabel(same.s) + ').');
+    } else if (cands.length) {
+      const ans = await askDuplicate(cfg, cands, row, { fromPart, art });
       if (!ans) return dialog.KEEP;
-      await gal.rollback();
-      if (ans === 'open') { setTimeout(() => { location.hash = cfg.href(dup.id); }, 0); return null; }
-      if (ans === 'link') { toast('„' + setLabel(dup) + '“ ausgewählt – bitte das Teil speichern'); return dup; }
-      return await overwriteSet(cfg, dup, row);
+      if (ans.a !== 'create') {
+        await gal.rollback();
+        const dup = ans.dup;
+        if (ans.a === 'open') { setTimeout(() => { location.hash = cfg.href(dup.id); }, 0); return null; }
+        if (ans.a === 'link') { toast('„' + setLabel(dup) + '“ ausgewählt – bitte das Teil speichern'); return dup; }
+        return await overwriteSet(cfg, dup, row);
+      }
     }
     row.bilder = await gal.commit(cfg.folder);
     let r;
@@ -1210,9 +1270,9 @@ const vsort = (a, b) => a.name.localeCompare(b.name, 'de');
 
 async function loadVorrat() {
   const [o, v, c] = await Promise.all([
-    sb.from('vorrat_orte').select('*').eq('user_id', owner()),
-    sb.from('vorrat').select('*').eq('user_id', owner()),
-    sb.from('vorrat_chargen').select('*').eq('user_id', owner()),
+    selectAll(() => sb.from('vorrat_orte').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('vorrat').select('*').eq('user_id', owner())),
+    selectAll(() => sb.from('vorrat_chargen').select('*').eq('user_id', owner())),
   ]);
   for (const r of [o, v, c]) if (r.error) throw r.error;
   vstate.orte = o.data.sort((a, b) => sortNat(a.name, b.name));

@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-11T16:29:26.007Z",
+  "when": "2026-11-12T14:27:32.119Z",
   "viewport": "390x844",
   "results": [
     {
@@ -93,14 +93,14 @@
     {
       "name": "compact price line",
       "pass": true,
-      "info": "0,76 € je Stück · 2,28 € gesamt"
+      "info": "1.234,50 € je Stück · 14.814,00 € gesamt"
     },
     {
       "name": "price in own line, quantity right",
       "pass": true,
       "info": {
         "priceInInfo": true,
-        "rightText": "3×"
+        "rightText": "12×"
       }
     },
     {
@@ -164,7 +164,7 @@
       "pass": true,
       "info": {
         "id": 1001,
-        "created_at": "2026-11-11T16:29:08.659Z",
+        "created_at": "2026-11-12T14:27:14.801Z",
         "set_nummer": "100",
         "name": "Erstes",
         "notiz": null,
@@ -175,13 +175,13 @@
       }
     },
     {
-      "name": "same number in other kind is allowed",
+      "name": "same number in other kind: shown with tab name, can still be created",
       "pass": true
     },
     {
       "name": "duplicate prompt shows existing tile",
       "pass": true,
-      "info": "Schon vorhanden – was tun?\n      In „Sets“ gibt es die Nummer 100 schon:\n      \n        100 Erstes\n        0 Teile zugeordnet · 1 Foto(s)\n      Aktualisieren üb"
+      "info": "Schon vorhanden – was tun?\n      Du hast 1-0 0 eingegeben. Diesen Eintrag gibt es schon:\n      \n        100 Erstes\n        🎁 in „Sets“ · gleiche Nummer\n       "
     },
     {
       "name": "\"Nein\" returns to editing, nothing saved",
@@ -199,7 +199,7 @@
           "name": "Erstes",
           "notiz": "Bleibt",
           "bilder": [
-            "11111111-1111-1111-1111-111111111111/teile/b5a7ada1-9d15-4eee-b9b6-52761cd409e0.jpg"
+            "11111111-1111-1111-1111-111111111111/teile/ae153615-d2ba-4045-bd3a-692475463127.jpg"
           ]
         },
         "after": {
@@ -207,7 +207,7 @@
           "name": "Überschrieben",
           "notiz": "Bleibt",
           "bilder": [
-            "11111111-1111-1111-1111-111111111111/teile/b5a7ada1-9d15-4eee-b9b6-52761cd409e0.jpg"
+            "11111111-1111-1111-1111-111111111111/teile/ae153615-d2ba-4045-bd3a-692475463127.jpg"
           ]
         }
       }
@@ -237,9 +237,9 @@
       "pass": true,
       "info": {
         "bilder": [
-          "11111111-1111-1111-1111-111111111111/teile/a2348639-9293-44cd-8df6-2f48c9b5f5bf.jpg",
-          "11111111-1111-1111-1111-111111111111/teile/086e6989-aaab-48cd-b98c-8975d383f402.jpg",
-          "11111111-1111-1111-1111-111111111111/teile/35a8db01-dcbe-4ec4-a186-dbe4fe6f3324.jpg"
+          "11111111-1111-1111-1111-111111111111/teile/8f53cf36-322f-454a-b101-89504434ab27.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/1bf329a2-f7a5-4f19-8e85-c0a3f31390a2.jpg",
+          "11111111-1111-1111-1111-111111111111/teile/ea3fdcd8-b10b-4b84-b53b-aa1d4e94a51b.jpg"
         ],
         "removed": [
           "11111111-1111-1111-1111-111111111111/teile/0b1e5c2a-old.jpg"
@@ -268,8 +268,8 @@
       "name": "LEGO multi-image",
       "pass": true,
       "info": [
-        "11111111-1111-1111-1111-111111111111/lego/0a14dd4d-0aa3-4547-a506-950c0d3cf804.jpg",
-        "11111111-1111-1111-1111-111111111111/lego/87b3429e-e2c5-4929-bc29-d34913fbec2e.jpg"
+        "11111111-1111-1111-1111-111111111111/lego/b69b6ad6-4cf5-4e50-9225-724c2bfb6ed7.jpg",
+        "11111111-1111-1111-1111-111111111111/lego/82b628ca-a1e5-4be2-8889-2e8600021895.jpg"
       ]
     },
     {
@@ -328,13 +328,13 @@
         ],
         "row": {
           "id": 1004,
-          "created_at": "2026-11-11T16:29:23.391Z",
+          "created_at": "2026-11-12T14:27:29.532Z",
           "user_id": "11111111-1111-1111-1111-111111111111",
           "namen": {
             "reserve": "Lager",
             "sets": "Neue Sets"
           },
-          "updated_at": "2026-11-11T16:29:23.391Z"
+          "updated_at": "2026-11-12T14:27:29.532Z"
         }
       }
     },

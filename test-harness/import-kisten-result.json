@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-11T16:31:40.429Z",
+  "when": "2026-11-12T14:29:49.981Z",
   "viewport": "390x844",
   "results": [
     {
@@ -67,13 +67,28 @@
       }
     },
     {
+      "name": "header \"Teile-Nr.\" recognised (numbers imported)",
+      "pass": true,
+      "info": [
+        "30 01 0001",
+        null,
+        "30 02 0002",
+        "30 03 0003",
+        "20 30 3000",
+        "30 04 0004",
+        "30 05 0005",
+        "30 06 0006",
+        "30 07 0007"
+      ]
+    },
+    {
       "name": "\"---\" treated as empty; empty number marked unknown",
       "pass": true,
       "info": {
-        "id": 1008,
-        "created_at": "2026-11-11T16:30:50.672Z",
+        "id": 1004,
+        "created_at": "2026-11-12T14:29:00.480Z",
         "teile_nr": null,
-        "farbe": "braun",
+        "farbe": null,
         "beschreibung": "Bart",
         "anzahl": 1,
         "euro": null,
@@ -88,6 +103,7 @@
       "name": "file duplicate merged (Ritter once, sets from both sheets)",
       "pass": true,
       "info": [
+        "3666",
         "4000"
       ]
     },
@@ -171,7 +187,7 @@
       "pass": true,
       "info": {
         "id": 1035,
-        "created_at": "2026-11-11T16:31:14.487Z",
+        "created_at": "2026-11-12T14:29:24.164Z",
         "teile_nr": null,
         "nummer_unbekannt": true,
         "farbe": null,
@@ -190,7 +206,7 @@
       "pass": true,
       "info": [
         "🧩\n    Unbekanntes Teil\n    ohne Nr. \n  ",
-        "🧩\n    Bart\n    ohne Nr. braun\n    \n    "
+        "🧩\n    Bart\n    ohne Nr. \n    \n    \n    "
       ]
     },
     {
@@ -198,7 +214,7 @@
       "pass": true,
       "info": {
         "pmSug": [
-          "🧩 30 22 1110 2er Schwert Quelle: Deine Sammlung Übernehmen"
+          "30 22 1110 Schwert · rot Quelle: Deine Sammlung Übernehmen"
         ],
         "links": [
           "https://www.klickypedia.com/?s=Schwert",
@@ -267,7 +283,7 @@
       "pass": true,
       "info": {
         "id": 1036,
-        "created_at": "2026-11-11T16:31:18.870Z",
+        "created_at": "2026-11-12T14:29:28.562Z",
         "art": "Kiste",
         "nummer": null,
         "farbe": null,
@@ -328,7 +344,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T16:31:25.220Z",
+        "created_at": "2026-11-12T14:29:34.880Z",
         "set_nummer": "9999",
         "name": "Feuerwehr",
         "notiz": null,
@@ -365,7 +381,7 @@
       "info": {
         "leiter": {
           "id": 1042,
-          "created_at": "2026-11-11T16:31:32.254Z",
+          "created_at": "2026-11-12T14:29:41.912Z",
           "teile_nr": "55 55 5555",
           "nummer_unbekannt": false,
           "farbe": null,
@@ -380,7 +396,7 @@
         },
         "s8": {
           "id": 1041,
-          "created_at": "2026-11-11T16:31:27.270Z",
+          "created_at": "2026-11-12T14:29:36.913Z",
           "set_nummer": "8888",
           "name": "Leiterwagen",
           "notiz": null,
@@ -395,7 +411,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-11T16:31:25.220Z",
+        "created_at": "2026-11-12T14:29:34.880Z",
         "set_nummer": "99-99",
         "name": "Neu",
         "notiz": null,

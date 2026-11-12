@@ -1,6 +1,7 @@
 const { chromium } = require('/usr/local/lib/pnpm/5/.pnpm/playwright-core@1.59.1/node_modules/playwright-core');
 const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+const FX = require('./make-fixtures')();
 const MOCK = fs.readFileSync(path.join(__dirname, 'mock-supabase.js'), 'utf8');
 const types = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const srv = http.createServer((q, r) => { const p = path.join(ROOT, decodeURIComponent(q.url.split('?')[0])); const f = fs.existsSync(p) && fs.statSync(p).isDirectory() ? path.join(p, 'index.html') : p;
@@ -67,12 +68,14 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   await page.click('#ns'); await fillSet('100', 'Erstes'); await page.click('dialog[open] button[type=submit]'); await page.waitForTimeout(400);
   let d = await db(); const first = d.sets.find(s => s.art === 'set' && s.set_nummer === '100');
   ok('create set in Sets (art=set)', !!first, first);
-  // gleiche Nummer wie eine Reserve → kein Duplikat (andere Art)
-  await go('#sets'); await page.click('#ns'); await fillSet('4000', 'Neu in Sets'); await page.click('dialog[open] button[type=submit]'); await page.waitForTimeout(400);
-  d = await db(); ok('same number in other kind is allowed', d.sets.filter(s => s.set_nummer === '4000').length === 2 && !(await page.locator('.dupdlg').count()));
+  // gleiche Nummer wie eine Reserve → Hinweis (anderer Reiter), anlegen trotzdem möglich
+  await go('#sets'); await page.click('#ns'); await fillSet('4000', 'Neu in Sets'); await page.click('dialog[open] button[type=submit]');
+  await page.waitForSelector('.dupdlg[open]'); const otherKind = await page.textContent('.dupdlg');
+  await page.click('.dupdlg [data-create]'); await page.waitForTimeout(400);
+  d = await db(); ok('same number in other kind: shown with tab name, can still be created', otherKind.includes('„Reserve“') && d.sets.filter(s => s.set_nummer === '4000').length === 2 && !(await page.locator('.dupdlg').count()));
   // Bild an erstes Set hängen + Notiz, damit wir sehen, dass nur Nummer/Name ersetzt werden
   const firstId = first.id;
-  await go('#set/' + firstId); await page.click('#es'); await page.setInputFiles('dialog[open] [data-ggal]', ['/tmp/img-red.png']);
+  await go('#set/' + firstId); await page.click('#es'); await page.setInputFiles('dialog[open] [data-ggal]', [FX + '/img-red.png']);
   await page.fill('dialog[open] textarea[name=notiz]', 'Bleibt'); await page.click('dialog[open] button[type=submit]'); await page.waitForTimeout(600);
   d = await db(); const before = JSON.parse(JSON.stringify(d.sets.find(s => s.id === firstId)));
   await go('#sets'); await page.click('#ns'); await fillSet(' 1-0 0 ', 'Überschrieben');
@@ -97,7 +100,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
 
   // 4) Mehrere Bilder an einem Teil
   await go('#teil/12:bearbeiten');
-  await page.setInputFiles('[data-ggal]', ['/tmp/img-red.png', '/tmp/img-green.png', '/tmp/img-blue.png']);
+  await page.setInputFiles('[data-ggal]', [FX + '/img-red.png', FX + '/img-green.png', FX + '/img-blue.png']);
   ok('gallery shows 4 thumbs (1 old + 3 new)', (await page.locator('#tgal .gthumb').count()) === 4);
   await page.click('#tgal [data-cover="3"]');   // blau wird Titelbild
   await page.click('#tgal [data-del="1"]');      // altes Bild (jetzt Position 1) entfernen
@@ -117,7 +120,7 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   d = await db(); ok('remove one image', d.teile.find(t => t.id === 12).bilder.length === 2);
 
   // LEGO: mehrere Bilder + Duplikat
-  await go('#l/teil/41:bearbeiten'); await page.setInputFiles('[data-ggal]', ['/tmp/img-red.png', '/tmp/img-green.png']);
+  await go('#l/teil/41:bearbeiten'); await page.setInputFiles('[data-ggal]', [FX + '/img-red.png', FX + '/img-green.png']);
   await page.click('#f button:not([type=button])'); await page.waitForTimeout(1500);
   d = await db(); const l41 = d.lego_teile.find(t => t.id === 41);
   ok('LEGO multi-image', l41.bilder.length === 2 && l41.bild_url === l41.bilder[0] && l41.bilder[0].includes('/lego/'), l41.bilder);
