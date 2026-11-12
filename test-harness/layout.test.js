@@ -72,6 +72,8 @@ const SIZES = [[320, 640], [360, 740], [390, 844], [412, 915], [740, 360]];
     await page.evaluate(() => document.querySelector('.dupgroup [data-act=merge]').scrollIntoView({ block: 'end' })); await page.screenshot({ path: path.join(SHOT, `doppelte-gruppe-${tag}.png`) });
     const fw = await page.$$eval('.dupgroup:first-of-type [data-f]', a => a.map(x => Math.round(x.getBoundingClientRect().width)));
     ok(`${tag} Nummer/Name danach wide enough`, fw.every(x => x >= (w < 521 ? w - 80 : 200)), fw);
+    const ctl = await page.$$eval('.dupgroup:first-of-type .item', a => a.map(it => { const ir = it.getBoundingClientRect(); return [...it.querySelectorAll('.dupctl > *')].map(c => { const r = c.getBoundingClientRect(); return r.left >= ir.left - 1 && r.right <= ir.right + 1 && r.height >= 30; }); }));
+    ok(`${tag} tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable`, ctl.length && ctl.every(x => x.length === 3 && x.every(Boolean)), ctl);
     // 3) Reiter umbenennen
     await go('#uebersicht'); await page.click('#renTabs'); await page.waitForSelector('dialog[open]');
     await check('tab rename dialog', 'dialog[open]', w === 390 ? 'rename' : null);

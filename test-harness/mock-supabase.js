@@ -87,7 +87,9 @@
       } else if (this.op === 'update') {
         rows = T.filter(match);
         for (const r of rows) { const nr = { ...r, ...this.payload }; const e = chkUniq(nr, r); if (e) return { data: null, error: e }; Object.assign(r, this.payload); }
-      } else if (this.op === 'delete') { rows = T.filter(match); db[this.t] = T.filter(r => !match(r)); }
+      } else if (this.op === 'delete') { rows = T.filter(match); db[this.t] = T.filter(r => !match(r));
+        const casc = { sets: 'teil_sets', lego_sets: 'lego_teil_sets' }[this.t]; // wie FK ON DELETE CASCADE
+        if (casc && db[casc]) { const gone = new Set(rows.map(r => r.id)); db[casc] = db[casc].filter(l => !gone.has(l.set_id)); } }
       save();
       rows = rows.map(r => this.expand(r));
       if (this.one) { if (!rows.length) return this.maybe ? { data: null, error: null } : { data: null, error: { message: 'no rows' } }; return { data: JSON.parse(JSON.stringify(rows[0])), error: null }; }

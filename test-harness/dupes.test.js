@@ -64,6 +64,27 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
   ok('skip hides group for now', !(await grp('3666').count()) && (await sum()).includes('übersprungen'));
   await page.reload(); await page.waitForSelector('#dupSum');
   ok('dismissed group stays hidden after reload', !(await grp('4400').count()) && (await grp('5581').count()) === 1, await sum());
+  // Einzelnen Eintrag löschen (Teile bleiben, nur Zuordnung + Fotos weg)
+  const del = await page.evaluate(() => { const U = window.__mock.U, db0 = window.__mock.db();
+    window.__mock.addSets([{ set_nummer: '7777 – Turm', bilder: [U + '/teile/p7.jpg'] }, { set_nummer: '7777' }, { set_nummer: '7777 Kopie' }]);
+    const db = window.__mock.db(); const by = n => db.sets.find(s => s.set_nummer === n).id;
+    db.teil_sets.push({ teil_id: 11, set_id: by('7777 – Turm'), user_id: U }, { teil_id: 12, set_id: by('7777 Kopie'), user_id: U });
+    localStorage.setItem('__mockdb', JSON.stringify(db)); return { turm: by('7777 – Turm'), plain: by('7777'), kopie: by('7777 Kopie'), U }; });
+  await page.reload(); await page.waitForSelector('#dupSum'); await go('#uebersicht'); await go('#doppelte'); await page.waitForSelector('#dupSum');
+  d = await db(); const tBefore = d.teile.length, lBefore = d.teil_sets.length, setsBefore = d.sets.length;
+  ok('each tile has a delete button', (await grp('7777').locator('[data-del]').count()) === 3 && (await grp('7777').locator(`[data-del="${del.turm}"]`).textContent()).includes('Löschen'));
+  const nConf = confirms.length;
+  await grp('7777').locator(`[data-del="${del.turm}"]`).click(); await page.waitForTimeout(600);
+  const cm = confirms[nConf] || '';
+  ok('delete confirm explains: entry deleted, parts stay, photos removed', cm.includes('7777 – Turm') && cm.includes('wird gelöscht') && cm.includes('1 zugeordnetes Teil bleibt erhalten') && cm.includes('nur die Zuordnung') && cm.includes('1 Foto dieses Eintrags wird gelöscht'), cm);
+  d = await db();
+  ok('delete removes only that entry', !d.sets.some(s => s.id === del.turm) && d.sets.some(s => s.id === del.plain) && d.sets.some(s => s.id === del.kopie) && d.sets.length === setsBefore - 1);
+  ok('parts survive, only that link removed', d.teile.length === tBefore && d.teile.some(t => t.id === 11) && !d.teil_sets.some(l => l.set_id === del.turm) && d.teil_sets.length === lBefore - 1 && d.teil_sets.some(l => l.set_id === del.kopie && l.teil_id === 12));
+  ok('photo of deleted entry removed from storage', (d.removed || []).includes(del.U + '/teile/p7.jpg'), d.removed);
+  ok('group refreshes with 2 tiles', (await grp('7777').locator('.item').count()) === 2);
+  await grp('7777').locator(`[data-del="${del.kopie}"]`).click(); await page.waitForTimeout(600);
+  d = await db();
+  ok('only one entry left → group disappears', !(await grp('7777').count()) && d.sets.some(s => s.id === del.plain) && d.teile.length === tBefore);
   // LEGO
   await go('#l/uebersicht'); ok('LEGO Übersicht has button', (await page.getAttribute('#dupBtn', 'href')) === '#l/doppelte');
   await go('#l/doppelte'); await page.waitForSelector('#dupSum');

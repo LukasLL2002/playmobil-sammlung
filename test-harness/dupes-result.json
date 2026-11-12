@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-12T14:49:25.192Z",
+  "when": "2026-11-12T15:08:15.418Z",
   "results": [
     {
       "name": "Übersicht has \"Doppelte prüfen\"",
@@ -97,6 +97,38 @@
       "name": "dismissed group stays hidden after reload",
       "pass": true,
       "info": "2 Gruppen mit möglichen Doppelten"
+    },
+    {
+      "name": "each tile has a delete button",
+      "pass": true
+    },
+    {
+      "name": "delete confirm explains: entry deleted, parts stay, photos removed",
+      "pass": true,
+      "info": "Eintrag löschen?\n\n„7777 – Turm“ (Reserve) wird gelöscht.\n\n• 1 zugeordnetes Teil bleibt erhalten – nur die Zuordnung zu diesem Eintrag wird entfernt.\n• 1 Foto dieses Eintrags wird gelöscht.\n• Die anderen Einträge der Gruppe bleiben unverändert.\n\nDas kann nicht rückgängig gemacht werden."
+    },
+    {
+      "name": "delete removes only that entry",
+      "pass": true
+    },
+    {
+      "name": "parts survive, only that link removed",
+      "pass": true
+    },
+    {
+      "name": "photo of deleted entry removed from storage",
+      "pass": true,
+      "info": [
+        "11111111-1111-1111-1111-111111111111/teile/p7.jpg"
+      ]
+    },
+    {
+      "name": "group refreshes with 2 tiles",
+      "pass": true
+    },
+    {
+      "name": "only one entry left → group disappears",
+      "pass": true
     },
     {
       "name": "LEGO Übersicht has button",

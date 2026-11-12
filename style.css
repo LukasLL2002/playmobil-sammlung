@@ -261,3 +261,5 @@ dialog .dlgbtns .btn{flex:1 1 8rem;padding:.7rem .6rem}
 dialog .dlgbtns [data-yes]{flex-basis:100%}
 @media (max-height:480px) and (orientation:landscape){dialog .dlgbtns .btn{flex-basis:6rem;padding:.45rem .5rem;font-size:.92rem}dialog .dlgbtns [data-yes]{flex-basis:6rem}}
 @media (max-width:350px){#tabbar a{font-size:.66rem;letter-spacing:-.01em;word-break:keep-all;overflow-wrap:normal;padding-left:0;padding-right:0}}
+.dupctl .pilldel{color:var(--red);border-color:#f3c4c4;background:#fff;font-family:inherit;line-height:1.2}.dupctl .pilldel:active{background:#fdecec}.dupctl .pilldel:disabled{opacity:.5}
+.dupctl .pill{min-height:2.25rem;box-sizing:border-box}

@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261112-3';
+const ASSET_V = '20261112-4';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -3058,7 +3058,8 @@ async function viewDupes(lego) {
         return `<div class="item" data-sid="${s.id}">${thumb(s, artIcon(a))}<div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
           <div class="sub">${artIcon(a)} ${esc(artName(a, lego))} · ${num(cfg.countTeile(s))} Teile · ${num(imgList(s).length)} Fotos</div>
           ${ro ? '' : `<div class="dupctl"><label class="pill"><input type="radio" name="keep${gi}" value="${s.id}" ${s.id === keep.id ? 'checked' : ''}> bleibt</label>
-          <label class="pill"><input type="checkbox" data-inc="${s.id}" checked> zusammenführen</label></div>`}</div></div>`; }).join('')}</div>
+          <label class="pill"><input type="checkbox" data-inc="${s.id}" checked> zusammenführen</label>
+          <button type="button" class="pill pilldel" data-del="${s.id}">🗑️ Löschen</button></div>`}</div></div>`; }).join('')}</div>
       ${ro ? '' : `<div class="grid2 dupfields" style="margin-top:.4rem"><div><label>Nummer danach</label><input data-f="nummer" value="${esc(sug.nummer)}"></div><div><label>Name danach</label><input data-f="name" value="${esc(sug.name)}"></div></div>
       <div class="row dupbtns" style="margin-top:.5rem"><button class="btn grow" type="button" data-act="merge">Zusammenführen</button>
         <button class="btn secondary grow" type="button" data-act="ignore">Nicht doppelt</button><button class="btn secondary grow" type="button" data-act="skip">Überspringen</button></div>`}</div>`;
@@ -3070,6 +3071,24 @@ async function viewDupes(lego) {
       const keep = g.items.find(s => s.id === Number(r.value)), sug = dupSuggest(keep, g.items); nr.value = sug.nummer; na.value = sug.name;
       el.querySelector(`[data-inc="${keep.id}"]`).checked = true; });
     el.querySelector('[data-act=skip]').onclick = () => { skipped.add(g.key); render(); };
+    el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      const s = g.items.find(x => x.id === Number(b.dataset.del)); if (!s) return;
+      const teile = cfg.st().teile.filter(t => (t[cfg.rel] || []).some(x => x.set_id === s.id)).length, fotos = imgList(s).length;
+      const msg = `Eintrag löschen?\n\n„${setLabel(s)}“ (${artName(setArt(s), lego)}) wird gelöscht.\n\n` +
+        (teile ? `• ${teile} zugeordnete${teile === 1 ? 's Teil bleibt' : ' Teile bleiben'} erhalten – nur die Zuordnung zu diesem Eintrag wird entfernt.\n` : '• Diesem Eintrag sind keine Teile zugeordnet.\n') +
+        (fotos ? `• ${fotos} Foto${fotos === 1 ? '' : 's'} dieses Eintrags ${fotos === 1 ? 'wird' : 'werden'} gelöscht.\n` : '') +
+        `• Die anderen Einträge der Gruppe bleiben unverändert.\n\nDas kann nicht rückgängig gemacht werden.`;
+      if (!confirm(msg)) return;
+      b.disabled = true;
+      const r = await sb.from(cfg.table).delete().eq('id', s.id).eq('user_id', s.user_id || owner()).select('id');
+      if (r.error) { b.disabled = false; return fail(r.error); }
+      if (!r.data || !r.data.length) { b.disabled = false; return toast('Löschen nicht möglich (keine Berechtigung?).'); }
+      // Fotos nur entfernen, wenn kein anderer Eintrag / kein Teil dasselbe Foto benutzt
+      const used = new Set(); for (const x of cfg.list()) if (x.id !== s.id) imgList(x).forEach(p => used.add(p)); for (const t of cfg.st().teile) imgList(t).forEach(p => used.add(p));
+      const rm = imgList(s).filter(p => !used.has(p)); if (rm.length) sb.storage.from(BUCKET).remove(rm).catch(console.warn);
+      cfg.put(cfg.list().filter(x => x.id !== s.id));
+      for (const t of cfg.st().teile) { const rel = t[cfg.rel]; if (rel && rel.some(x => x.set_id === s.id)) t[cfg.rel] = rel.filter(x => x.set_id !== s.id); }
+      toast('Gelöscht ✔'); render(); });
     el.querySelector('[data-act=ignore]').onclick = async () => {
       const r = await sb.from('dup_ignoriert').insert({ user_id: owner(), bereich, gruppe: g.key });
       if (r.error && String(r.error.code) !== '23505') return fail(r.error);

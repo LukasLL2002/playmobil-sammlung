@@ -53,6 +53,22 @@
   ]
  },
  {
+  "name": "320x640 tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable",
+  "pass": true,
+  "info": [
+   [
+    true,
+    true,
+    true
+   ],
+   [
+    true,
+    true,
+    true
+   ]
+  ]
+ },
+ {
   "name": "320x640 tab rename dialog: no overflow, no squeezed text",
   "pass": true,
   "info": {
@@ -140,6 +156,22 @@
   "info": [
    296,
    296
+  ]
+ },
+ {
+  "name": "360x740 tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable",
+  "pass": true,
+  "info": [
+   [
+    true,
+    true,
+    true
+   ],
+   [
+    true,
+    true,
+    true
+   ]
   ]
  },
  {
@@ -233,6 +265,22 @@
   ]
  },
  {
+  "name": "390x844 tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable",
+  "pass": true,
+  "info": [
+   [
+    true,
+    true,
+    true
+   ],
+   [
+    true,
+    true,
+    true
+   ]
+  ]
+ },
+ {
   "name": "390x844 tab rename dialog: no overflow, no squeezed text",
   "pass": true,
   "info": {
@@ -323,6 +371,22 @@
   ]
  },
  {
+  "name": "412x915 tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable",
+  "pass": true,
+  "info": [
+   [
+    true,
+    true,
+    true
+   ],
+   [
+    true,
+    true,
+    true
+   ]
+  ]
+ },
+ {
   "name": "412x915 tab rename dialog: no overflow, no squeezed text",
   "pass": true,
   "info": {
@@ -410,6 +474,22 @@
   "info": [
    332,
    332
+  ]
+ },
+ {
+  "name": "740x360 tile controls (bleibt / zusammenführen / Löschen) fit inside tile, tappable",
+  "pass": true,
+  "info": [
+   [
+    true,
+    true,
+    true
+   ],
+   [
+    true,
+    true,
+    true
+   ]
   ]
  },
  {
