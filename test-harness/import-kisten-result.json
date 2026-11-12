@@ -1,5 +1,5 @@
 {
-  "when": "2026-11-12T14:38:23.809Z",
+  "when": "2026-11-12T14:51:05.549Z",
   "viewport": "390x844",
   "results": [
     {
@@ -86,7 +86,7 @@
       "pass": true,
       "info": {
         "id": 1004,
-        "created_at": "2026-11-12T14:37:34.276Z",
+        "created_at": "2026-11-12T14:50:15.831Z",
         "teile_nr": null,
         "farbe": null,
         "beschreibung": "Bart",
@@ -187,7 +187,7 @@
       "pass": true,
       "info": {
         "id": 1035,
-        "created_at": "2026-11-12T14:37:57.959Z",
+        "created_at": "2026-11-12T14:50:39.645Z",
         "teile_nr": null,
         "nummer_unbekannt": true,
         "farbe": null,
@@ -283,7 +283,7 @@
       "pass": true,
       "info": {
         "id": 1036,
-        "created_at": "2026-11-12T14:38:02.324Z",
+        "created_at": "2026-11-12T14:50:44.027Z",
         "art": "Kiste",
         "nummer": null,
         "farbe": null,
@@ -344,7 +344,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-12T14:38:08.708Z",
+        "created_at": "2026-11-12T14:50:50.379Z",
         "set_nummer": "9999",
         "name": "Feuerwehr",
         "notiz": null,
@@ -381,7 +381,7 @@
       "info": {
         "leiter": {
           "id": 1042,
-          "created_at": "2026-11-12T14:38:15.724Z",
+          "created_at": "2026-11-12T14:50:57.445Z",
           "teile_nr": "55 55 5555",
           "nummer_unbekannt": false,
           "farbe": null,
@@ -396,7 +396,7 @@
         },
         "s8": {
           "id": 1041,
-          "created_at": "2026-11-12T14:38:10.742Z",
+          "created_at": "2026-11-12T14:50:52.463Z",
           "set_nummer": "8888",
           "name": "Leiterwagen",
           "notiz": null,
@@ -411,7 +411,7 @@
       "pass": true,
       "info": {
         "id": 1040,
-        "created_at": "2026-11-12T14:38:08.708Z",
+        "created_at": "2026-11-12T14:50:50.379Z",
         "set_nummer": "99-99",
         "name": "Neu",
         "notiz": null,

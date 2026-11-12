@@ -11,7 +11,7 @@ if (!window.supabase?.createClient) {
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ASSET_V = '20261112-2';
+const ASSET_V = '20261112-3';
 const _scriptLoads = {};
 function loadScript(src) {
   if (_scriptLoads[src]) return _scriptLoads[src];
@@ -831,18 +831,18 @@ function askDuplicate(cfg, cands, row, opts = {}) {
     const allNear = cands.every(c => c.m === 'near');
     const d = document.createElement('dialog'); d.className = 'dupdlg';
     const tile = (c, i) => { const s = c.s, a = setArt(s);
-      return `<label class="item" data-dup="${s.id}" style="cursor:pointer">${cands.length > 1 ? `<input type="radio" name="dupPick" value="${i}" ${i === 0 ? 'checked' : ''} style="margin-right:.4rem">` : ''}${thumb(s, artIcon(a))}
+      return `<label class="item dupcand" data-dup="${s.id}">${cands.length > 1 ? `<input type="radio" name="dupPick" value="${i}" ${i === 0 ? 'checked' : ''}>` : ''}${thumb(s, artIcon(a))}
         <div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
         <div class="sub">${artIcon(a)} in „${esc(artName(a, cfg.lego))}“ · ${c.m === 'exact' ? 'gleiche Nummer' : 'ähnliche Nummer'}</div>
         <div class="sub">${num(cfg.countTeile(s))} Teile zugeordnet${imgList(s).length ? ' · ' + num(imgList(s).length) + ' Foto(s)' : ''}</div></div></label>`; };
     d.innerHTML = `<h2 style="margin-top:0">${allNear ? 'Ähnliche Nummer vorhanden – was tun?' : 'Schon vorhanden – was tun?'}</h2>
       <p style="margin-top:0">Du hast <b>${esc(row.set_nummer)}</b> eingegeben. ${cands.length > 1 ? 'Diese Einträge gibt es schon – bitte einen auswählen:' : 'Diesen Eintrag gibt es schon:'}</p>
       <div class="list">${cands.map(tile).join('')}</div>
-      <p style="margin-bottom:.3rem"><b>Aktualisieren</b> übernimmt beim ausgewählten Eintrag nur <b>Nummer</b> und <b>Name</b> (→ <b>${esc(row.set_nummer)} ${esc(row.name || '')}</b>).<br>
+      <p style="margin-bottom:.3rem"><b>Aktualisieren</b> übernimmt beim ausgewählten Eintrag nur <b>Nummer</b> und <b>Name</b> (→&nbsp;<b class="nrchip">${esc([row.set_nummer, row.name].filter(Boolean).join(' ').trim())}</b>).<br>
         <span class="muted" style="font-size:.85rem">Fotos, Notiz und alle schon zugeordneten Teile bleiben erhalten${opts.fromPart ? ' – dieses Teil wird zusätzlich zugeordnet' : ''}.</span></p>
       ${opts.fromPart ? `<p class="muted" style="font-size:.85rem;margin-top:0"><b>Diesem Teil zuordnen</b> lässt den vorhandenen Eintrag unverändert und wählt ihn nur für dieses Teil aus.</p>` : ''}
       ${sameExact ? '' : `<p class="muted" style="font-size:.85rem;margin-top:0"><b>Mit dieser Nummer anlegen</b> legt trotzdem einen neuen Eintrag „${esc(row.set_nummer)}“ in „${esc(artName(art, cfg.lego))}“ an.</p>`}
-      <div class="row" style="flex-wrap:wrap"><button class="btn grow" type="button" data-yes>Aktualisieren</button>
+      <div class="row dlgbtns"><button class="btn grow" type="button" data-yes>Aktualisieren</button>
         ${opts.fromPart ? `<button class="btn grow" type="button" data-link>Diesem Teil zuordnen</button>` : `<button class="btn secondary grow" type="button" data-open>Vorhandenes öffnen</button>`}
         ${sameExact ? '' : `<button class="btn secondary grow" type="button" data-create>Mit dieser Nummer anlegen</button>`}
         <button class="btn secondary grow" type="button" data-no>Abbrechen</button></div>`;
@@ -3057,10 +3057,10 @@ async function viewDupes(lego) {
       <div class="list">${g.items.map(s => { const a = setArt(s);
         return `<div class="item" data-sid="${s.id}">${thumb(s, artIcon(a))}<div class="info"><div class="title">${esc(s.set_nummer)} ${esc(s.name || '')}</div>
           <div class="sub">${artIcon(a)} ${esc(artName(a, lego))} · ${num(cfg.countTeile(s))} Teile · ${num(imgList(s).length)} Fotos</div>
-          ${ro ? '' : `<div class="sub"><label style="display:inline"><input type="radio" name="keep${gi}" value="${s.id}" ${s.id === keep.id ? 'checked' : ''}> bleibt</label>
-          &nbsp; <label style="display:inline"><input type="checkbox" data-inc="${s.id}" checked> zusammenführen</label></div>`}</div></div>`; }).join('')}</div>
-      ${ro ? '' : `<div class="grid2" style="margin-top:.4rem"><div><label>Nummer danach</label><input data-f="nummer" value="${esc(sug.nummer)}"></div><div><label>Name danach</label><input data-f="name" value="${esc(sug.name)}"></div></div>
-      <div class="row" style="flex-wrap:wrap;margin-top:.5rem"><button class="btn grow" type="button" data-act="merge">Zusammenführen</button>
+          ${ro ? '' : `<div class="dupctl"><label class="pill"><input type="radio" name="keep${gi}" value="${s.id}" ${s.id === keep.id ? 'checked' : ''}> bleibt</label>
+          <label class="pill"><input type="checkbox" data-inc="${s.id}" checked> zusammenführen</label></div>`}</div></div>`; }).join('')}</div>
+      ${ro ? '' : `<div class="grid2 dupfields" style="margin-top:.4rem"><div><label>Nummer danach</label><input data-f="nummer" value="${esc(sug.nummer)}"></div><div><label>Name danach</label><input data-f="name" value="${esc(sug.name)}"></div></div>
+      <div class="row dupbtns" style="margin-top:.5rem"><button class="btn grow" type="button" data-act="merge">Zusammenführen</button>
         <button class="btn secondary grow" type="button" data-act="ignore">Nicht doppelt</button><button class="btn secondary grow" type="button" data-act="skip">Überspringen</button></div>`}</div>`;
   };
   const bindGroup = (g, gi) => {

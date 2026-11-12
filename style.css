@@ -223,3 +223,41 @@ input:disabled{background:#f1f3f5;color:#888}
 [hidden]{display:none!important}
 .psdlg .pssets summary{cursor:pointer;font-size:.85rem;color:var(--muted)}
 .psdlg .linkbtn{background:none;border:0;padding:0;color:var(--accent,#1565c0);text-decoration:underline;font:inherit;cursor:pointer}
+
+/* Handy-Layout: Auswahl-Kacheln, Dialoge, Doppelte prüfen (t67) */
+input[type=radio],input[type=checkbox]{width:auto;flex:0 0 auto;max-width:none;padding:0;margin:0;accent-color:var(--blue)}
+input[type=radio],input[type=checkbox]{width:1.15rem;height:1.15rem}
+dialog{max-height:90vh;max-height:90dvh;overflow:auto;overscroll-behavior:contain;width:min(94vw,440px);box-sizing:border-box}
+dialog *{min-width:0}
+dialog p,dialog h2{overflow-wrap:anywhere}
+.dupdlg .list{display:flex;flex-direction:column;gap:.45rem}
+.dupdlg .item.dupcand{display:flex;flex-direction:row;align-items:center;gap:.55rem;padding:.5rem .6rem;cursor:pointer}
+.dupdlg .item.dupcand .thumb,.dupdlg .item.dupcand .thumbwrap{width:48px;height:48px;flex:0 0 48px;font-size:1.4rem}
+.dupdlg .item.dupcand .thumbwrap .thumb{width:48px;height:48px}
+.dupdlg .item.dupcand .info{flex:1 1 auto;min-width:0}
+.dupdlg .item.dupcand .title{font-size:.98rem}
+.dupdlg .item.dupcand .sub{font-size:.82rem}
+.nrchip{overflow-wrap:anywhere}
+dialog .dlgbtns{position:sticky;bottom:-1.2rem;margin:.6rem -1.2rem -1.2rem;padding:.7rem 1.2rem 1rem;background:#fff;box-shadow:0 -6px 12px -8px rgba(0,0,0,.25);z-index:1;flex-wrap:wrap}
+dialog .dlgbtns .btn{flex:1 1 9rem;min-width:0;white-space:normal}
+.dupgroup .item{align-items:flex-start}
+.dupgroup .item .thumb,.dupgroup .item .thumbwrap{width:48px;height:48px;flex:0 0 48px;font-size:1.4rem}
+.dupgroup .item .thumbwrap .thumb{width:48px;height:48px}
+.dupctl{display:flex;flex-wrap:wrap;gap:.35rem .5rem;margin-top:.35rem}
+.dupctl .pill{display:inline-flex;align-items:center;gap:.35rem;margin:0;padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:999px;background:#fff;font-size:.88rem;font-weight:600;color:var(--text);cursor:pointer;white-space:nowrap}
+.dupctl .pill:has(input:checked){border-color:var(--blue);background:var(--blue-l)}
+.dupfields input{width:100%}
+.dupbtns .btn{flex:1 1 8.5rem;min-width:0;white-space:normal}
+@media (max-width:520px){.dupfields{grid-template-columns:1fr}.dupbtns .btn[data-act=merge]{flex-basis:100%}}
+@media (max-height:480px) and (orientation:landscape){dialog{max-height:94dvh;padding:.8rem 1rem}dialog .dlgbtns{bottom:-.8rem;margin:.5rem -1rem -.8rem;padding:.5rem 1rem .6rem}dialog h2{font-size:1.1rem}}
+.psdlg .item{flex-wrap:wrap;align-items:flex-start}
+.psdlg .item .thumb{width:48px;height:48px;flex:0 0 48px;font-size:1.4rem}
+.psdlg .item .info{flex:1 1 150px;min-width:0}
+.psdlg .item .right{flex:0 0 auto;margin-left:auto;align-self:center}
+@media (max-width:420px){.psdlg .item .right{flex:1 0 100%}.psdlg .item .right .btn{width:100%}}
+.tablewrap table.mini th,.tablewrap table.mini td{min-width:5.2rem;overflow-wrap:anywhere}.tablewrap table.mini th:empty,.tablewrap table.mini td:empty{min-width:0}
+dialog .dlgbtns{gap:.5rem}
+dialog .dlgbtns .btn{flex:1 1 8rem;padding:.7rem .6rem}
+dialog .dlgbtns [data-yes]{flex-basis:100%}
+@media (max-height:480px) and (orientation:landscape){dialog .dlgbtns .btn{flex-basis:6rem;padding:.45rem .5rem;font-size:.92rem}dialog .dlgbtns [data-yes]{flex-basis:6rem}}
+@media (max-width:350px){#tabbar a{font-size:.66rem;letter-spacing:-.01em;word-break:keep-all;overflow-wrap:normal;padding-left:0;padding-right:0}}

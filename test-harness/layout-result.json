@@ -1,0 +1,452 @@
+[
+ {
+  "name": "320x640 duplicate prompt: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 candidate tiles: radio | 48px thumb | text",
+  "pass": true,
+  "info": [
+   {
+    "info": 138,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 138,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 138,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   }
+  ]
+ },
+ {
+  "name": "320x640 tile title is not one char per line",
+  "pass": true,
+  "info": 4
+ },
+ {
+  "name": "320x640 duplicate review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 Nummer/Name danach wide enough",
+  "pass": true,
+  "info": [
+   256,
+   256
+  ]
+ },
+ {
+  "name": "320x640 tab rename dialog: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 part search results: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 import sheet choice: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 import review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "320x640 no page errors",
+  "pass": true,
+  "info": []
+ },
+ {
+  "name": "360x740 duplicate prompt: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 candidate tiles: radio | 48px thumb | text",
+  "pass": true,
+  "info": [
+   {
+    "info": 178,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 178,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 178,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   }
+  ]
+ },
+ {
+  "name": "360x740 tile title is not one char per line",
+  "pass": true,
+  "info": 3
+ },
+ {
+  "name": "360x740 duplicate review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 Nummer/Name danach wide enough",
+  "pass": true,
+  "info": [
+   296,
+   296
+  ]
+ },
+ {
+  "name": "360x740 tab rename dialog: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 part search results: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 import sheet choice: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 import review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "360x740 no page errors",
+  "pass": true,
+  "info": []
+ },
+ {
+  "name": "390x844 duplicate prompt: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 candidate tiles: radio | 48px thumb | text",
+  "pass": true,
+  "info": [
+   {
+    "info": 208,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 208,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 208,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   }
+  ]
+ },
+ {
+  "name": "390x844 tile title is not one char per line",
+  "pass": true,
+  "info": 3
+ },
+ {
+  "name": "390x844 duplicate review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 Nummer/Name danach wide enough",
+  "pass": true,
+  "info": [
+   326,
+   326
+  ]
+ },
+ {
+  "name": "390x844 tab rename dialog: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 part search results: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 import sheet choice: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 import review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "390x844 no page errors",
+  "pass": true,
+  "info": []
+ },
+ {
+  "name": "412x915 duplicate prompt: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 candidate tiles: radio | 48px thumb | text",
+  "pass": true,
+  "info": [
+   {
+    "info": 230,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 230,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 230,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   }
+  ]
+ },
+ {
+  "name": "412x915 tile title is not one char per line",
+  "pass": true,
+  "info": 3
+ },
+ {
+  "name": "412x915 duplicate review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 Nummer/Name danach wide enough",
+  "pass": true,
+  "info": [
+   348,
+   348
+  ]
+ },
+ {
+  "name": "412x915 tab rename dialog: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 part search results: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 import sheet choice: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 import review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "412x915 no page errors",
+  "pass": true,
+  "info": []
+ },
+ {
+  "name": "740x360 duplicate prompt: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 candidate tiles: radio | 48px thumb | text",
+  "pass": true,
+  "info": [
+   {
+    "info": 305,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 305,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   },
+   {
+    "info": 305,
+    "thumb": 48,
+    "radio": 18,
+    "row": true
+   }
+  ]
+ },
+ {
+  "name": "740x360 tile title is not one char per line",
+  "pass": true,
+  "info": 2
+ },
+ {
+  "name": "740x360 duplicate review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 Nummer/Name danach wide enough",
+  "pass": true,
+  "info": [
+   332,
+   332
+  ]
+ },
+ {
+  "name": "740x360 tab rename dialog: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 part search results: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 import sheet choice: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 import review: no overflow, no squeezed text",
+  "pass": true,
+  "info": {
+   "bad": [],
+   "n": 0
+  }
+ },
+ {
+  "name": "740x360 no page errors",
+  "pass": true,
+  "info": []
+ }
+]
